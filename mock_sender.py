@@ -1,10 +1,8 @@
 """
 Sends real, encoded ICA and RSA messages over UDP to test the backend +
-frontend without needing a real RSU. Replaces the earlier placeholder
-version that sent guessed JSON — this uses the actual ica_encoder()/
+frontend without needing a real RSU. Uses the actual ica_encoder()/
 rsa_encoder() from backend/codec, so the hex on the wire is exactly what
-a real RSU would send (wire format: ASCII hex string, matching
-decoder.py's expectation).
+a real RSU would send 
 
 Also runs a background thread simulating live vehicle/pedestrian tracking
 (moving markers on the map) — this part is a MOCK wire format (plain

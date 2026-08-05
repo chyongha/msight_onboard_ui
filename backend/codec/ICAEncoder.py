@@ -8,7 +8,7 @@ def ica_encoder(msgCnt=None,
 
                 partOne_exists = False,
                 # if partOne_exists is True, following inputs are mandatory
-                # If partOne_ecists is False, follwoing inputs should be empty
+                # If partOne_ecists is False, following inputs should be empty
                 partOne_msgCnt = None,
                 partOne_sourceID = None,
                 partOne_secMark = None,
@@ -236,8 +236,6 @@ def ica_encoder(msgCnt=None,
             print('partOne_secMark should be an integer! But', partOne_secMark, 'is provided. Set to 0.')
             ica['partOne']['secMark'] = 0
         elif partOne_secMark < 0 or partOne_secMark > 65535:
-            # FIX: previously fell through without setting ica['partOne']['secMark'] at
-            # all, leaving a mandatory BSMcoreData field missing on invalid input.
             print('partOne_secMark should be in range [0, 65535]! But', partOne_secMark, 'is provided. Set to 0.')
             ica['partOne']['secMark'] = 0
         else:
@@ -931,9 +929,6 @@ def ica_encoder(msgCnt=None,
                     crumb['timeOffset'] = int(path_crumbData_timeOffset[i] * 100)
 
                 if len(path_crumbData_speed) > i:
-                    # FIX: added the "is None" guard — every sibling field (posAccuracy,
-                    # heading below) already handles a None entry; this one didn't and
-                    # would raise TypeError on `None < 0`.
                     if path_crumbData_speed[i] is None or path_crumbData_speed[i] < 0 or path_crumbData_speed[i] > 163.8:
                         print('path_crumbData_speed[', i, '] should be in range [0, 163.8] m/s! Set to unavailable.')
                         crumb['speed'] = 8191

@@ -6,13 +6,6 @@ def rsa_encoder(msgCnt=None,
                 timeStamp=None,  # optional
                 typeEvent=None,
                 description=None,  # optional
-                # FIX: was `description=[]`. [] is not None, so
-                # `if description is not None:` below was ALWAYS entered for
-                # every call that didn't pass description explicitly, hitting
-                # `len([]) < 1` and printing a spurious "should have 1 to 8
-                # ITIS codes! But 0 codes provided" warning on every normal
-                # call. None matches the convention every other optional
-                # parameter in this file uses.
                 priority=None,  # optional
                 heading=None,  # optional
                 extent=None,  # optional

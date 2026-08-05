@@ -1,15 +1,6 @@
 """
-Turns a decoded ICA/RSA dict (rich, deeply nested, matches the ASN.1
-message layout) into the flat shape the frontend actually renders:
-
+Turns a decoded ICA/RSA dict into the shape frontend can understand
     {type, warning, text, lat, lon}
-
-Both ICA and RSA are alert-only message types — per ICA's own docstring,
-its existence IS "a warning that a vehicle is likely entering an
-intersection without the right of way." There's no expected "all clear"
-message, so `warning` is always True here — clearing the banner after a
-period of silence is the frontend's job (useSocket.js), not something
-decided from message content.
 """
 from codec.itis_codes import ITIS
 
@@ -55,9 +46,7 @@ def _ica_event_text(event_flag_value) -> str:
 
 
 def _clean_coord(value):
-    """ICADecoder.py/RSADecoder.py use the string 'unavailable' as their
-    sentinel for a missing lat/long. Normalize that to None for the
-    frontend/map rather than leaking the sentinel string through."""
+    """if unavailable value for missing values, convert to None"""
     return None if value == 'unavailable' else value
 
 

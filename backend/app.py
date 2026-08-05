@@ -1,14 +1,10 @@
 """
 Backend
 
-This does NOT serve the frontend — with Vite, the frontend runs on its own
-dev server (usually http://localhost:5173) and talks to this backend over
-Socket.IO (default http://localhost:5000). Two separate processes while
-developing; only combined at build/deploy time if you choose to.
+Frontend runs on its own dev server and talks to backend over socketio 
 
 Host/port/origin come from config.py (env vars) rather than being
-hardcoded, so this same code runs on a dev laptop or a deployed roadside
-box without source edits — see config.py and README.md for the env vars.
+hardcoded
 """
 from flask import Flask
 from flask_socketio import SocketIO
@@ -17,7 +13,7 @@ import config
 from udp_listener import start_udp_listener, start_tracking_listener
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins=config.FRONTEND_ORIGIN)
+socketio = SocketIO(app, cors_allowed_origins=config.FRONTEND_ORIGIN) # tells flask to accept socketio connection from frontend
 
 if __name__ == '__main__':
     # start listening for UDP packets on background threads

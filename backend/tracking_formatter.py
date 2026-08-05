@@ -1,23 +1,9 @@
 """
-Turns a decoded live-tracking message into the 'frame' socket event
-payload the frontend renders — same shape as
-msight_original_script/realtime_plot.py's 'frame' event, minus the
-fields that don't apply to this project:
+Turns a decoded live-tracking message into the frame socket event
+payload the frontend renders 
 
-  - no conflict_ids / warning_circles: this project doesn't recompute
-    conflicts itself — the RSU already decided that and reported it via
-    ICA/RSA (see alert_formatter.py). This layer is just "where is
-    everything right now."
-  - no tl_phases / traffic light bars: no SPaT message decoder exists.
-  - no ego_id: there's no single "ego vehicle" here — this is a
-    roadside/infrastructure view, not one vehicle's own dashboard.
-
-Input shape, for now: whatever mock_sender.py's placeholder JSON tracking
-format produces (see its module docstring) — NOT a real decoded SDSM
-message, since no real encoder/decoder for that exists yet. Swapping in
-a real decoder later only means replacing whatever calls this function
-with something that builds the same `raw` dict shape; this function and
-everything downstream of it (geometry.py, MapView.vue) doesn't change.
+Input shape, for now: whatever mock_sender.py's placeholder JSON tracking format produces 
+format_tracking_frame needs changes once the encoder / decoder for tracking is set 
 """
 from geometry import rectangle_corners_latlon
 

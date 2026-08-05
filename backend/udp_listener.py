@@ -31,8 +31,7 @@ def _listen_loop(socketio, host, port, decode_fn, emit_event):
 
 def start_udp_listener(socketio, host='0.0.0.0', port=4000):
     """
-    ICA/RSA alerts -> 'warning' events. Starts on a background thread so
-    it doesn't block the Flask-SocketIO server.
+    ICA/RSA alerts -> 'warning' events. Starts on a background thread so it doesn't block the Flask-SocketIO server.
     """
     threading.Thread(
         target=_listen_loop, args=(socketio, host, port, decode_message, 'warning'),
@@ -41,12 +40,8 @@ def start_udp_listener(socketio, host='0.0.0.0', port=4000):
 
 
 def _decode_tracking_frame(raw_bytes: bytes) -> dict:
-    # MOCK wire format: plain JSON — NOT the real encoding a real live-
-    # tracking feed would use (that'd very likely be hex-encoded UPER,
-    # like ICA/RSA, once a real decoder exists). See mock_sender.py's
-    # docstring for the exact schema this expects. Swapping in a real
-    # decoder later means replacing this function's body only —
-    # format_tracking_frame() and everything downstream doesn't change.
+    # Not the real encoding a real-time tracking would use 
+    # replace with real decoder later 
     raw = json.loads(raw_bytes.decode('utf-8'))
     return format_tracking_frame(raw)
 

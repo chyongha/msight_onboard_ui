@@ -1,14 +1,8 @@
 """
-Pure lat/lon <-> local-meters math. No Flask, no SocketIO, no I/O.
+lat/lon <-> local meters
 
 Uses a flat-earth (equirectangular) approximation rather than a real
-geodetic projection library -- fine at intersection scale (positions
-within a few hundred meters of each other), where the error is
-centimeters, not something worth pulling in lanelet2's full HD-map
-machinery for. This only exists because the live-tracking feed is
-confirmed to carry lat/lon directly (see msight_onboard_ui's README) --
-if that ever turns out to be wrong, this file is what needs replacing,
-nothing downstream of it.
+geodetic projection library
 """
 import math
 
@@ -36,8 +30,10 @@ def rectangle_corners_latlon(lat: float, lon: float, heading_deg: float,
     deliberately so there's one heading convention across the whole app.
     """
     heading_rad = math.radians(heading_deg)
-    sin_h, cos_h = math.sin(heading_rad), math.cos(heading_rad)
-    hl, hw = max(length_m, 0.1) / 2.0, max(width_m, 0.1) / 2.0
+    hl = max(length_m, 0.1) / 2.0
+    hw = max(width_m, 0.1) / 2.0
+    sin_h = math.sin(heading_rad)
+    cos_h = math.cos(heading_rad)
 
     corners = []
     for forward, left in ((hl, -hw), (hl, hw), (-hl, hw), (-hl, -hw)):
