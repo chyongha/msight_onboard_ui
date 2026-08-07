@@ -4,10 +4,10 @@ Turns a decoded ICA/RSA dict into the shape frontend can understand
 """
 from codec.itis_codes import ITIS
 
+# ITIS code of the event : name of the event 
 _ITIS_NAME_BY_CODE = {code: name for name, code in ITIS.items()}
 
-# ICA eventFlag bit -> human text. See ICAEncoder.py's docstring for the
-# full 14-bit layout; only the ones useful on a warning banner are named.
+# ICA eventFlag bit - only the one useful for the warning banner is listed here 
 _ICA_EVENT_BITS = {
     0: 'hazard lights on',
     1: 'stop line violation',
@@ -20,16 +20,23 @@ _ICA_EVENT_BITS = {
 
 
 def _humanize(name: str) -> str:
-    """itis_codes.py keys are dashed slugs ('accident-involving-a-pedestrian')
-    — fine as dict keys, not as banner text. Just despace the dashes."""
+    """
+    keys in itis_code.py are dashed (-), which is not fine for banner text - change it to a space 
+    """
     return name.replace('-', ' ')
 
 
 def _capitalize_first(text: str) -> str:
+    """
+    Capitalize the first letter of a string 
+    """
     return text[:1].upper() + text[1:] if text else text
 
 
 def _itis_label(code) -> str:
+    """
+    returns name of the event from the numeric ITIS-code
+    """
     if code is None:
         return 'unknown event'
     name = _ITIS_NAME_BY_CODE.get(code)
@@ -37,6 +44,9 @@ def _itis_label(code) -> str:
 
 
 def _ica_event_text(event_flag_value) -> str:
+    """
+    read eventFlag, find which bits are set, and joins their labels into a readable phrase
+    """
     if not isinstance(event_flag_value, int):
         return 'vehicle approaching intersection without right of way'
     active = [label for bit, label in _ICA_EVENT_BITS.items() if event_flag_value & (1 << bit)]
@@ -46,7 +56,9 @@ def _ica_event_text(event_flag_value) -> str:
 
 
 def _clean_coord(value):
-    """if unavailable value for missing values, convert to None"""
+    """
+    if unavailable value for missing values, convert to None
+    """
     return None if value == 'unavailable' else value
 
 
@@ -56,8 +68,6 @@ def format_ica(ica: dict) -> dict:
     lon = _clean_coord(part_one.get('long'))
 
     event_flag = ica.get('eventFlag')
-    # ica_decoder() doesn't unwrap the (value, bit_length) tuple ICAEncoder
-    # builds for eventFlag, so handle both shapes defensively.
     event_flag_value = event_flag[0] if isinstance(event_flag, tuple) else event_flag
 
     return {

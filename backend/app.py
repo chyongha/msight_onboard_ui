@@ -17,11 +17,11 @@ socketio = SocketIO(app, cors_allowed_origins=config.FRONTEND_ORIGIN) # tells fl
 
 if __name__ == '__main__':
     # start listening for UDP packets on background threads
-    start_udp_listener(socketio, port=config.UDP_PORT)
-    start_tracking_listener(socketio, port=config.TRACKING_UDP_PORT)
+    start_udp_listener(socketio, port=config.UDP_PORT) # background thread 1 - ica/rsa alerts and emitting warning events 
+    start_tracking_listener(socketio, port=config.TRACKING_UDP_PORT) # background thread 2 - tracking objects 
 
     print(f'Backend running at http://{config.HOST}:{config.PORT}')
     # allow_unsafe_werkzeug=True: fine for local dev (no eventlet/gevent
     # installed here, per requirements.txt using simple-websocket instead).
     # Flask-SocketIO otherwise refuses to run its dev server this way
-    socketio.run(app, host=config.HOST, port=config.PORT, allow_unsafe_werkzeug=True)
+    socketio.run(app, host=config.HOST, port=config.PORT, allow_unsafe_werkzeug=True) # main thread running forever

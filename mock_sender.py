@@ -43,8 +43,8 @@ TRACKING_TARGET = ('127.0.0.1', config.TRACKING_UDP_PORT)
 
 # A rough Mcity-area coordinate to place test alerts at; adjust to wherever
 # your actual test intersection is.
-INTERSECTION_LAT = 42.2808
-INTERSECTION_LON = -83.7430
+INTERSECTION_LAT = 39.99
+INTERSECTION_LON = -83.00
 
 
 def send_hex(hex_str: str, label: str):
@@ -73,9 +73,9 @@ def send_ica_stop_line_violation(msg_cnt: int):
         path_crumbData_latOffset=[0.0], path_crumbData_lonOffset=[0.0],
         path_crumbData_elevationOffset=[0.0], path_crumbData_timeOffset=[0.1],
         intersectionID_id=1, laneNumber_type='approach', laneNumber_value=1,
-        eventFlag_value=(1 << 1),  # bit1 = eventStopLineViolation
+        eventFlag_value=131,  # bit0, bit1, bit7
     )
-    send_hex(hex_ica, 'ICA (stop line violation)')
+    send_hex(hex_ica, 'ICA (Hazard Lights On, Stop Sign Violation, Hard Braking)')
 
 
 def simulate_tracking_objects(t: float):

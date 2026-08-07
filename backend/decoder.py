@@ -18,12 +18,18 @@ _DISPATCH = {
 
 
 def _peek_message_type(hex_str: str) -> str:
+    """
+    Check the message type
+    """
     frame = v2xlib.MessageFrame.MessageFrame
     frame.from_uper_ws(unhexlify(hex_str))
     return frame()['value'][0]
 
 
 def decode_message(raw_bytes: bytes) -> dict:
+    """
+    Perform decoding using the alert_formatter functions 
+    """
     hex_str = raw_bytes.decode('ascii').strip()
 
     # check message type - ICA or RSA

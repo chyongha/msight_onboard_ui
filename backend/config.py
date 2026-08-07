@@ -3,13 +3,10 @@ Deployment configuration
 """
 import os
 
-HOST = os.environ.get('BACKEND_HOST', '127.0.0.1')
-PORT = int(os.environ.get('BACKEND_PORT', '5000'))
+HOST = os.environ.get('BACKEND_HOST', '127.0.0.1') # if frontend and backend run on different server, change 127.0.0.1 to 0.0.0.0
+PORT = int(os.environ.get('BACKEND_PORT', '5000')) 
 UDP_PORT = int(os.environ.get('UDP_PORT', '4000'))
-# Separate port for the (currently mocked — see tracking_formatter.py and
-# mock_sender.py) live vehicle/pedestrian tracking feed, so it can't
-# collide with or complicate the already-working ICA/RSA decode path on
-# UDP_PORT above.
+# Separate port for the live vehicle/pedestrian tracking feed
 TRACKING_UDP_PORT = int(os.environ.get('TRACKING_UDP_PORT', '4001'))
 
 # Origin(s) allowed to open a Socket.IO connection. '*' is fine for local
