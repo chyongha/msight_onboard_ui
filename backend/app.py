@@ -3,8 +3,7 @@ Backend
 
 Frontend runs on its own dev server and talks to backend over socketio 
 
-Host/port/origin come from config.py (env vars) rather than being
-hardcoded
+Host/port/origin come from config.py (env vars) rather than being hardcoded
 """
 from flask import Flask
 from flask_socketio import SocketIO

@@ -1,8 +1,6 @@
 """
-Owns UDP sockets: receive raw bytes, hand them to a decode function, emit
-the result on a named socket event. Two independent listeners run this
-same loop on different ports — ICA/RSA alerts, and (mocked for now, see
-tracking_formatter.py's docstring) live tracking frames.
+Receive raw bytes, hand them to a decode function, emit the result on a named socket event. 
+Two independent listeners run this same loop on different ports — ICA/RSA alerts, and live tracking frames.
 """
 import json
 import socket
@@ -40,8 +38,7 @@ def start_udp_listener(socketio, host='0.0.0.0', port=4000):
 
 
 def _decode_tracking_frame(raw_bytes: bytes) -> dict:
-    # Not the real encoding a real-time tracking would use 
-    # replace with real decoder later 
+    # Not the real encoding a real-time tracking would use - replace with real decoder later 
     raw = json.loads(raw_bytes.decode('utf-8'))
     return format_tracking_frame(raw)
 

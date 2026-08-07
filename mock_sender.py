@@ -1,21 +1,6 @@
 """
-Sends real, encoded ICA and RSA messages over UDP to test the backend +
-frontend without needing a real RSU. Uses the actual ica_encoder()/
-rsa_encoder() from backend/codec, so the hex on the wire is exactly what
-a real RSU would send 
-
-Also runs a background thread simulating live vehicle/pedestrian tracking
-(moving markers on the map) — this part is a MOCK wire format (plain
-JSON, see simulate_tracking_objects()/tracking_loop() below), since no
-real encoder/decoder for that feed exists yet. See
-backend/tracking_formatter.py's docstring for how this gets replaced
-later without touching the frontend.
-
-Needs PYV2XLIB_VENDOR_DIR set to a folder containing v2xlib.py (+
-v2xlib.json), same as the backend — see backend/codec/utils.py.
-
-Run this WHILE app.py is also running:
-    python mock_sender.py
+sends real, encoded ICA and RSA messages over UDP to test the backend +
+frontend without needing a real RSU
 """
 import json
 import socket
@@ -33,16 +18,10 @@ from codec.itis_codes import ITIS
 from geometry import offset_latlon
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-# Same UDP_PORT env var the backend reads (config.py) — set it once,
-# consistently, rather than hardcoding the port in two places that could
-# drift apart. Host is separate: this always targets the backend's own
-# machine (127.0.0.1) since it's simulating a UDP packet the real RSU
-# would send directly to wherever the backend is running.
 TARGET = ('127.0.0.1', config.UDP_PORT)
 TRACKING_TARGET = ('127.0.0.1', config.TRACKING_UDP_PORT)
 
-# A rough Mcity-area coordinate to place test alerts at; adjust to wherever
-# your actual test intersection is.
+# random coordinates 
 INTERSECTION_LAT = 39.99
 INTERSECTION_LON = -83.00
 
@@ -52,11 +31,7 @@ def send_hex(hex_str: str, label: str):
     print(f'  sent {label} ({len(hex_str)} hex chars)')
 
 
-def send_ica_stop_line_violation(msg_cnt: int):
-    """A vehicle running the stop sign — mirrors the 'rolling_stop'
-    scenario from the earlier JSON-based mock: ICA's eventFlag bit1
-    (eventStopLineViolation) is the actual signal here, not a computed
-    physics check — that decision is the RSU's, not ours."""
+def send_ica_accidents(msg_cnt: int):
     hex_ica = ica_encoder(
         msgCnt=msg_cnt % 128, sourceID='RSU1',
         partOne_exists=True,
@@ -79,13 +54,6 @@ def send_ica_stop_line_violation(msg_cnt: int):
 
 
 def simulate_tracking_objects(t: float):
-    """Three simulated objects near the test intersection: two vehicles
-    crossing paths, one pedestrian crossing between them. Positions/
-    motion pattern adapted from msight_old_structure/backend/run.py's
-    simulate_frame() (itself simplified from realtime_plot.py), just
-    outputting lat/lon directly via geometry.offset_latlon() instead of
-    local x/y, since this project's live-tracking format is confirmed to
-    be lat/lon-based, not local-x/y-needing-lanelet2."""
     objects = []
 
     v1_east = 30.0 - (t * 5.0 % 80.0)
@@ -113,9 +81,6 @@ def simulate_tracking_objects(t: float):
 
 
 def tracking_loop():
-    """Runs on its own thread (started in __main__) so it doesn't block
-    the ICA/RSA alert cycling below — sends a tracking frame at 5Hz,
-    matching the kind of rate a real continuous feed would run at."""
     t = 0.0
     while True:
         payload = {'objects': simulate_tracking_objects(t), 'timestamp': time.time()}
@@ -124,12 +89,11 @@ def tracking_loop():
         time.sleep(0.2)
 
 
-def send_rsa_accident(msg_cnt: int):
-    """A generic hazard alert, e.g. reported accident near the crosswalk."""
+def send_rsa_accidents(msg_cnt: int):
     hex_rsa = rsa_encoder(
         msgCnt=msg_cnt % 128,
         typeEvent=ITIS['accident-involving-a-pedestrian'],
-        description=[ITIS['reduce-your-speed'], ITIS['crosswalks']],
+        description=[ITIS['reduce-your-speed'], ITIS['crosswalks'], ITIS['minor-accident'], ITIS['reckless-driver']],
         priority=6,
         position_exists=True,
         position_lat=INTERSECTION_LAT, position_long=INTERSECTION_LON,
@@ -142,16 +106,14 @@ if __name__ == '__main__':
 
     msg_cnt = 0
     while True:
-        # Cycle ICA and RSA alerts with quiet gaps between, so the
-        # frontend's clear-after-silence timer has something to clear.
-        send_ica_stop_line_violation(msg_cnt)
+        send_ica_accidents(msg_cnt)
         time.sleep(1)
         msg_cnt += 1
 
-        time.sleep(4)  # quiet period — banner should clear
+        time.sleep(4)  
 
-        send_rsa_accident(msg_cnt)
+        send_rsa_accidents(msg_cnt)
         time.sleep(1)
         msg_cnt += 1
 
-        time.sleep(4)  # quiet period — banner should clear
+        time.sleep(4)  

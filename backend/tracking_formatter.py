@@ -1,6 +1,5 @@
 """
 Turns a decoded live-tracking message into the frame socket event
-payload the frontend renders 
 
 Input shape, for now: whatever mock_sender.py's placeholder JSON tracking format produces 
 format_tracking_frame needs changes once the encoder / decoder for tracking is set 
