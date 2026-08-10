@@ -1,10 +1,7 @@
 import os
 import importlib.util
 
-# This file lives at msight_onboard_ui/backend/codec/utils.py, so three
-# levels up is the project root — where v2xlib.py actually sits today.
-# Computed relative to this file rather than hardcoded as an absolute
-# path, so it still resolves correctly on any machine this runs on.
+# path where the vxlib.py file is located 
 _PROJECT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "v2xlib")
 
 
@@ -20,12 +17,6 @@ def load_v2xlib(
     Usage:
         v2xlib = load_v2xlib()
     """
-    # Falls back to _PROJECT_ROOT, not None, so PYV2XLIB_VENDOR_DIR no
-    # longer needs to be set by hand for the common case (v2xlib.py
-    # sitting right in the project folder). Still fully overridable via
-    # the env var if v2xlib.py ever needs to live somewhere else (e.g. a
-    # real deployment that doesn't want this huge generated file checked
-    # into version control at all).
     vendor_dir = os.environ.get(env_var, _PROJECT_ROOT)
 
     module_path = os.path.join(vendor_dir, module_filename)

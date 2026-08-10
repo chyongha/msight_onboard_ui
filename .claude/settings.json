@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"from codec.utils import load_v2xlib; v=load_v2xlib\\(\\); print\\('ok', v\\)\")",
+      "Bash(pip show *)",
+      "Bash(node shoot.js)"
+    ]
+  }
+}

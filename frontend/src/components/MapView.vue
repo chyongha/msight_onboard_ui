@@ -14,8 +14,8 @@ const props = defineProps({
 
 
 const DEFAULT_CENTER = [
-  Number(import.meta.env.VITE_DEFAULT_LAT) || 42.2808,
-  Number(import.meta.env.VITE_DEFAULT_LON) || -83.7430,
+  Number(import.meta.env.VITE_DEFAULT_LAT) || 42.2975,
+  Number(import.meta.env.VITE_DEFAULT_LON) || -83.7042,
 ]
 
 const CATEGORY_COLOR = { vehicle: '#3388ff', vru: '#22aa44' } // blue for vehicles, green for pedestrians
