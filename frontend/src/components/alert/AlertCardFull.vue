@@ -3,27 +3,34 @@ import { computed, nextTick, ref, watch } from 'vue'
 import AlertHeader from './AlertHeader.vue'
 import AlertSubject from './AlertSubject.vue'
 import DirectionIndicator from './DirectionIndicator.vue'
-import { categoryMeta } from '../../utils/alertVisuals.js'
+import HeadingSlicesRing from './HeadingSlicesRing.vue'
+import { categoryMeta, subjectDetailChips } from '../../utils/alertVisuals.js'
 import { CLEAR_AFTER_MS } from '../../composables/useSocket.js'
 
 // Every active alert renders through this one component
 const props = defineProps({
-  alert: { type: Object, required: true }, 
+  alert: { type: Object, required: true },
 })
 
 const meta = computed(() => categoryMeta(props.alert.category))
 
-// vehicle / pedestrian 
-const subjectLabel = computed(() => (props.alert.category === 'pedestrian' ? 'Pedestrian' : 'Vehicle'))
+// ICA alert subject - pedestrian or vehicle 
+// RSA alert subject - extent (other info got moved)
+const subjectLabel = computed(() => {
+  if (props.alert.type === 'RSA') return 'Extent'
+  return props.alert.category === 'pedestrian' ? 'Pedestrian' : 'Vehicle'
+})
+
+// Can end up showing nothing 
+const hasSubjectDetails = computed(() => {
+  const chips = subjectDetailChips(props.alert.subject, props.alert.extent)
+  return chips.length > 0 || (props.alert.subject?.flags?.length ?? 0) > 0
+})
 
 // same value the useSocket.js clear timer uses
 const clearAfterMs = `${CLEAR_AFTER_MS}ms`
 
-// Long condition lists get capped/scrolled (see .events CSS) rather than
-// stretching the card - but a scrollbar alone is an easy-to-miss signal
-// that content is hidden, especially on touch/kiosk displays where
-// scrollbars often don't show until touched. Measure actual overflow so a
-// fade + label can flag it explicitly instead.
+// Measure actual overflow so a fade + label can flag it explicitly instead.
 const eventsListEl = ref(null)
 const hasMoreEvents = ref(false)
 function checkEventsOverflow() {
@@ -42,21 +49,12 @@ watch(
 
 <template>
   <div class="card" :style="{ '--accent': `var(${meta.colorVar})` }">
-    <!-- keyed on timestamp so a re-broadcast of the same alert (which
-         restarts the clear timer in useSocket.js) restarts this too,
-         instead of it silently jumping back to full without visual notice -->
     <div class="countdown-track"><div class="countdown-bar" :key="alert.timestamp" /></div>
 
-    <AlertHeader :type="alert.type" :category="alert.category" :timestamp="alert.timestamp" />
+    <AlertHeader :type="alert.type" :category="alert.category" :timestamp="alert.timestamp" :occurred-at="alert.occurredAt" />
 
     <div v-if="alert.headline || alert.events?.length" class="section">
       <span class="section-label">Event</span>
-      <!-- one list for both message types: ICA's flag conditions ARE the
-           primary info here, no headline. RSA's typeEvent (headline) leads
-           as the emphasized first item, description codes follow as normal
-           items - both are ITIS codes describing the same event, just at
-           different levels of specificity, so they read as one list rather
-           than two visually separate blocks -->
       <div class="events-wrap">
         <ul ref="eventsListEl" class="events">
           <li v-if="alert.headline" class="headline-item">{{ alert.headline }}</li>
@@ -70,13 +68,23 @@ watch(
       </div>
     </div>
 
-    <div v-if="alert.subject" class="section">
+    <div v-if="hasSubjectDetails" class="section">
       <span class="section-label">{{ subjectLabel }}</span>
-      <AlertSubject :subject="alert.subject" :accent-var="meta.colorVar" />
+      <AlertSubject :subject="alert.subject" :extent="alert.extent" :accent-var="meta.colorVar" />
     </div>
 
+    <!-- RSA with a HeadingSlice bitmask gets both panels side by side -
+         kept as two visually/textually distinct facts (arrow = one
+         object's motion, ring = which directions this alert applies to)
+         rather than merged, so they don't blur into looking like the same
+         thing. Everything else (ICA, or RSA without this field) keeps the
+         single full-width arrow panel as before. -->
+    <div v-if="alert.subject && alert.directionSlices?.length" class="direction-row">
+      <DirectionIndicator :subject="alert.subject" :accent-var="meta.colorVar" :timestamp="alert.timestamp" />
+      <HeadingSlicesRing :slices="alert.directionSlices" :accent-var="meta.colorVar" :timestamp="alert.timestamp" />
+    </div>
     <DirectionIndicator
-      v-if="alert.subject"
+      v-else-if="alert.subject"
       :subject="alert.subject"
       :accent-var="meta.colorVar"
       :timestamp="alert.timestamp"
@@ -145,10 +153,6 @@ watch(
   font-size: 1rem;
   font-weight: 500;
   line-height: 1.35;
-  /* cap so an alert with an unusually long condition list (ICA can have
-     several flag bits set at once) scrolls internally instead of
-     stretching the card - paired with .events-fade below since a
-     scrollbar alone is easy to miss, especially on touch/kiosk displays */
   max-height: 7.4em;
   overflow-y: auto;
 }
@@ -175,10 +179,18 @@ watch(
   letter-spacing: 0.04em;
   color: var(--color-text-faint);
 }
-/* RSA's typeEvent - the primary event, vs. the description items below it
-   which merely elaborate on it (see AlertCardFull's template comment) */
 .headline-item {
   font-weight: 700;
   font-size: 1.05rem;
+}
+
+.direction-row {
+  display: flex;
+  gap: var(--space-2);
+  align-items: stretch;
+}
+.direction-row > :deep(*) {
+  flex: 1 1 0;
+  min-width: 0;
 }
 </style>

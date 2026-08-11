@@ -38,6 +38,7 @@ _ICA_SCENARIOS = [
         'eventFlag_value': 131,  # bit0, bit1, bit7
         'brakes_traction': 'engaged', 'brakes_abs': 'engaged', 'brakes_scs': 'off',
         'speed': 12.0, 'heading': 15.0,
+        'steering': 15.0, 'accel_long': -6.0, 'accel_lat': 0.5, 'accel_yaw': 2.0,
     },
     {
         'label': 'Hazard Lights On only (caution)',
@@ -45,6 +46,7 @@ _ICA_SCENARIOS = [
         'eventFlag_value': 1,  # bit0
         'brakes_traction': 'off', 'brakes_abs': 'off', 'brakes_scs': 'off',
         'speed': 8.0, 'heading': 15.0,
+        'steering': 1.0, 'accel_long': -0.5, 'accel_lat': 0.0, 'accel_yaw': 0.0,
     },
     {
         'label': 'Stability Control + Traction Loss',
@@ -52,6 +54,7 @@ _ICA_SCENARIOS = [
         'eventFlag_value': 24,  # bit3, bit4
         'brakes_traction': 'engaged', 'brakes_abs': 'off', 'brakes_scs': 'engaged',
         'speed': 15.0, 'heading': 15.0,
+        'steering': -25.0, 'accel_long': -2.0, 'accel_lat': 5.0, 'accel_yaw': 35.0,
     },
     {
         'label': 'Flat Tire, Disabled Vehicle',
@@ -59,6 +62,7 @@ _ICA_SCENARIOS = [
         'eventFlag_value': 3072,  # bit10, bit11
         'brakes_traction': 'off', 'brakes_abs': 'off', 'brakes_scs': 'off',
         'speed': 0.5, 'heading': 95.0,  # near-stopped - disabled, not braking
+        'steering': 0.0, 'accel_long': 0.0, 'accel_lat': 0.0, 'accel_yaw': 0.0,
     },
     {
         'label': 'Air Bag Deployment, Jackknife, Hard Braking',
@@ -66,6 +70,7 @@ _ICA_SCENARIOS = [
         'eventFlag_value': 12416,  # bit7, bit12, bit13
         'brakes_traction': 'engaged', 'brakes_abs': 'engaged', 'brakes_scs': 'engaged',
         'speed': 0.2, 'heading': 200.0,  # post-crash, essentially stopped
+        'steering': 30.0, 'accel_long': -8.0, 'accel_lat': 6.0, 'accel_yaw': 45.0,
     },
 ]
 
@@ -92,8 +97,8 @@ def send_ica_accidents(msg_cnt: int, scenario_index: int = None):
         partOne_lat=INTERSECTION_LAT, partOne_long=INTERSECTION_LON, partOne_elev=250.0,
         partOnePosAcc_semiMajor=1.0, partOnePosAcc_semiMinor=1.0, partOnePosAcc_orientation=0.0,
         partOne_transmission='forwardGears', partOne_speed=scenario['speed'], partOne_heading=scenario['heading'],
-        partOne_angle=0.0, partOne_accelSet_long=-1.0, partOne_accelSet_lat=0.0,
-        partOne_accelSet_vert=0.0, partOne_accelSet_yaw=0.0,
+        partOne_angle=scenario['steering'], partOne_accelSet_long=scenario['accel_long'], partOne_accelSet_lat=scenario['accel_lat'],
+        partOne_accelSet_vert=0.0, partOne_accelSet_yaw=scenario['accel_yaw'],
         partOne_brakes_wheelBrakes=0, partOne_brakes_traction=scenario['brakes_traction'],
         partOne_brakes_abs=scenario['brakes_abs'], partOne_brakes_scs=scenario['brakes_scs'],
         partOne_brakes_brakeBoost='off', partOne_brakes_auxBrakes='off',
@@ -113,7 +118,14 @@ _RSA_SCENARIOS = [
         'typeEvent': 'accident-involving-a-pedestrian',
         'description': ['reduce-your-speed', 'crosswalks', 'minor-accident', 'reckless-driver'],
         'priority': 6,
-        'position_heading': 200.0, 'position_speed': 6.0, 
+        'position_heading': 200.0, 'position_speed': 6.0,
+        'extent': 'useFor100meters',
+        # HeadingSlice bitmask - which compass directions this alert applies
+        # to (not this scenario's own heading above - see _rsa_heading_slices
+        # in alert_formatter.py). Same value the supervisor's reference
+        # script uses - verified against the real ASN.1 schema this actually
+        # lights N/SSE/S/NNW, not "east and west" as that script's comment claims.
+        'heading': 0x8181,
     },
     {
         'label': 'wet pavement ahead (caution, weather)',
@@ -121,6 +133,7 @@ _RSA_SCENARIOS = [
         'description': ['reduce-your-speed', 'drive-with-extreme-caution'],
         'priority': 3,
         'position_heading': 80.0, 'position_speed': 11.0,
+        'extent': 'useFor1000meters',
     },
     {
         'label': 'debris on roadway (info, road hazard)',
@@ -133,8 +146,10 @@ _RSA_SCENARIOS = [
         'label': 'black ice ahead (critical via priority, weather)',
         'typeEvent': 'black-ice',
         'description': ['reduce-your-speed', 'drive-with-extreme-caution'],
-        'priority': 5,  
+        'priority': 5,
         'position_heading': 350.0, 'position_speed': 9.0,
+        'extent': 'useFor500meters',
+        'heading': 0x0808,  # genuinely E+W this time (index4=E -> python bit11=2048, index12=W -> python bit3=8)
     },
     {
         'label': 'vehicle on fire (critical, vehicle)',
@@ -142,6 +157,7 @@ _RSA_SCENARIOS = [
         'description': ['reduce-your-speed', 'approach-with-care'],
         'priority': 6,
         'position_heading': 120.0, 'position_speed': 14.0,
+        'extent': 'useInstantlyOnly',
     },
 ]
 
@@ -157,8 +173,10 @@ def send_rsa_accidents(msg_cnt: int, scenario_index: int = None):
         position_exists=True,
         position_lat=INTERSECTION_LAT, position_long=INTERSECTION_LON,
         position_heading=scenario['position_heading'],
-        position_speed_transmission='forwardGears', 
+        position_speed_transmission='forwardGears',
         position_speed_velocity=scenario['position_speed'],
+        extent=scenario.get('extent'),  # omitted entirely (not defaulted) when a scenario doesn't set one
+        heading=scenario.get('heading'),  # HeadingSlice bitmask - also omitted when unset
     )
     send_hex(hex_rsa, f'RSA ({scenario["label"]})')
 
@@ -311,9 +329,8 @@ if __name__ == '__main__':
         for i in range(len(_ICA_SCENARIOS)):
             send_ica_accidents(i)
             time.sleep(6)
-
-        for i in range(len(_RSA_SCENARIOS)):
             send_rsa_accidents(i)
             time.sleep(6)
+
 
         time.sleep(3)

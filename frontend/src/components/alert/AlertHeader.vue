@@ -1,12 +1,13 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { computed } from 'vue'
 import AlertIcon from './AlertIcon.vue'
-import { categoryMeta } from '../../utils/alertVisuals.js'
+import { categoryMeta, formatEventTime } from '../../utils/alertVisuals.js'
 
 const props = defineProps({
   type: { type: String, default: null },       // ICA or RSA
-  category: { type: String, default: null },    // vehicle or pedestrian or weather or road hazard or other 
-  timestamp: { type: Number, default: null },   // epoch seconds from the backend
+  category: { type: String, default: null },    // vehicle or pedestrian or weather or road hazard or other
+  timestamp: { type: Number, default: null },   // epoch seconds this backend relayed the message - only used here to key the icon's replay-on-refresh animation, NOT for display (see occurredAt)
+  occurredAt: { type: Number, default: null },  // epoch seconds "when this happened" - see alert_formatter.py's _event_epoch
 })
 
 const meta = computed(() => categoryMeta(props.category))
@@ -17,23 +18,11 @@ const meta = computed(() => categoryMeta(props.category))
 const KNOWN_ANIM_CATEGORIES = ['vehicle', 'pedestrian', 'weather', 'road_hazard']
 const iconAnimClass = computed(() => `icon-arrive-${KNOWN_ANIM_CATEGORIES.includes(props.category) ? props.category : 'other'}`)
 
-// ticking clock so "x s ago" stays live while the card is on screen
-const now = ref(Date.now())
-let clockTimer = null
-onMounted(() => {
-  clockTimer = setInterval(() => { now.value = Date.now() }, 1000)
-})
-onBeforeUnmount(() => {
-  if (clockTimer) clearInterval(clockTimer)
-})
-
-const relativeTime = computed(() => {
-  if (!props.timestamp) return null
-  const deltaS = Math.max(0, Math.round(now.value / 1000 - props.timestamp))
-  if (deltaS < 1) return 'just now'
-  if (deltaS < 60) return `${deltaS}s ago`
-  return `${Math.round(deltaS / 60)}m ago`
-})
+// a fixed point in time, not a live-ticking "Xs ago" - the countdown bar
+// already communicates how much longer the card has, so a second relative-
+// time readout was redundant. No ticking clock needed any more since this
+// value doesn't change while the card is on screen.
+const eventTime = computed(() => formatEventTime(props.occurredAt))
 </script>
 
 <template>
@@ -48,7 +37,7 @@ const relativeTime = computed(() => {
       <span class="category">{{ meta.label }}</span>
       <span v-if="type" class="type-tag">{{ type }}</span>
     </div>
-    <span v-if="relativeTime" class="time">{{ relativeTime }}</span>
+    <span v-if="eventTime" class="time">{{ eventTime }}</span>
   </div>
 </template>
 
@@ -70,9 +59,7 @@ const relativeTime = computed(() => {
   animation-timing-function: ease-out;
   animation-fill-mode: both;
 }
-/* one-shot entrance per category, all the same restrained ~0.45s family -
-   varies only the direction/motion to hint at the category, not the whole
-   effect, so five categories still read as one coherent idea */
+
 .icon-arrive-vehicle { animation-name: icon-arrive-up; }
 .icon-arrive-pedestrian { animation-name: icon-arrive-step; }
 .icon-arrive-weather { animation-name: icon-arrive-down; }

@@ -2,8 +2,6 @@
 Backend
 
 Frontend runs on its own dev server and talks to backend over socketio 
-
-Host/port/origin come from config.py (env vars) rather than being hardcoded
 """
 from flask import Flask
 from flask_socketio import SocketIO
@@ -20,7 +18,4 @@ if __name__ == '__main__':
     start_tracking_listener(socketio, port=config.TRACKING_UDP_PORT) # background thread 2 - tracking objects 
 
     print(f'Backend running at http://{config.HOST}:{config.PORT}')
-    # allow_unsafe_werkzeug=True: fine for local dev (no eventlet/gevent
-    # installed here, per requirements.txt using simple-websocket instead).
-    # Flask-SocketIO otherwise refuses to run its dev server this way
     socketio.run(app, host=config.HOST, port=config.PORT, allow_unsafe_werkzeug=True) # main thread running forever

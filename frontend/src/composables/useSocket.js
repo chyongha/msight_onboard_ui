@@ -3,7 +3,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
 // how long an alert stays on screen after its most recent broadcast 
-export const CLEAR_AFTER_MS = 5000
+export const CLEAR_AFTER_MS = 7000
 // cap on simultaneously stacked alerts
 const MAX_ALERTS = 4
 
@@ -27,8 +27,11 @@ function alertFields(data) {
     headline: data.headline ?? null, // RSA's primary event
     events: Array.isArray(data.events) && data.events.length ? data.events : [data.text],
     subject: data.subject ?? null,
+    extent: data.extent ?? null, // RSA only - see alert_formatter.py
+    directionSlices: data.direction_slices ?? null, // RSA only - see alert_formatter.py
     trajectory: data.trajectory ?? null,
     timestamp: data.timestamp ?? Date.now() / 1000,
+    occurredAt: data.occurred_at ?? data.timestamp ?? Date.now() / 1000, // "when it happened" - see alert_formatter.py's _event_epoch
     lat: data.lat ?? null,
     lon: data.lon ?? null,
   }

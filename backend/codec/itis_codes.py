@@ -124,6 +124,7 @@ ITIS = {
     'in-road-construction-area': 7941,
     'in-the-median': 7948,
     'on-the-roadway': 7951,
+    'cross-traffic': 7993,
     'north': 7998,
     'south': 7999,
     'east': 8000,
@@ -134,6 +135,7 @@ ITIS = {
 
     # VehicleGroupAffected (9217-9261) - scoping tag, not an event
     'bicycles': 9218,
+    'runaway-vehicles': 9256,
 
     # TravelerGroupAffected (9473-9487) - scoping tag, not an event
     'pedestrian': 9486,
