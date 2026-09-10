@@ -1,15 +1,20 @@
 <script setup>
 // two independent layers - alert / tracking pin 
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
-import L from 'leaflet'            
-import 'leaflet/dist/leaflet.css'  
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
+import EgoCoordinatesBox from './EgoCoordinatesBox.vue'
+import MapLegend from './MapLegend.vue'
+import { bearingBetween, roughMetersBetween } from '../utils/geo.js'
 
 const props = defineProps({
-  isWarning: Boolean, // is there an active alert 
-  lat: { type: Number, default: null }, // alert latitude 
+  isWarning: Boolean, // is there an active alert
+  lat: { type: Number, default: null }, // alert latitude
   lon: { type: Number, default: null }, // alert longitude
   warningText: { type: String, default: '' }, // shown in the alert pin's tooltip
-  frame: { type: Object, default: null }, // live tracking 
+  frame: { type: Object, default: null }, // live tracking
+  egoPosition: { type: Object, default: null }, // this vehicle's own live GPS fix - { lat, lon, timestamp } or null
+  showGpsBox: { type: Boolean, default: true }, // independent of whether the map itself is showing
 })
 
 
@@ -19,12 +24,28 @@ const DEFAULT_CENTER = [
 ]
 
 const CATEGORY_COLOR = { vehicle: '#3388ff', vru: '#22aa44' } // blue for vehicles, green for pedestrians
+const ALERT_STROKE_COLOR = '#cc0000'
+const ALERT_FILL_COLOR = '#f52323'
+const EGO_COLOR = '#7c5cf0' // weather-purple (--color-cat-weather) - distinct from the alert pin (red) and tracked-object markers (blue/green), since this one means "you"
+
+// single source of truth for MapLegend.vue - built from the exact same
+// colors the markers below are drawn with, so the two can't drift apart
+const legendItems = [
+  { color: ALERT_FILL_COLOR, label: 'Alert location' },
+  { color: CATEGORY_COLOR.vehicle, label: 'Tracked vehicle' },
+  { color: CATEGORY_COLOR.vru, label: 'Tracked pedestrian' },
+  { color: EGO_COLOR, label: 'You (GPS)' },
+]
 
 const mapContainer = ref(null) // this is how Leaflet gets a real DOM element to attach to
 let map = null // leaflet map instance
 let alertMarker = null // single red circle marking the most recent alert's location
 let hasCenteredOnAlert = false // true after the map has auto-centered on an alert once — prevents re-centering (and fighting your manual panning) on every later alert
-const objectMarkers = {} // live tracking object marker 
+const objectMarkers = {} // live tracking object marker
+let egoMarker = null // this vehicle's own position
+let hasCenteredOnEgo = false // same one-time-only pattern as hasCenteredOnAlert - without this, a GPS location far from DEFAULT_CENTER (e.g. testing at a different site, or a mock/default mismatch) would move the marker somewhere off-screen with nothing to make it visible
+let egoHeadingDeg = null // last known direction of travel, null until computed from two real fixes - never fabricated from a single point
+let lastHeadingRefLatLon = null // the position egoHeadingDeg was last computed FROM
 
 function updateAlertMarker() {
   if (!map) return  
@@ -48,10 +69,10 @@ function updateAlertMarker() {
     // first time seeing an alert (or the marker was just removed above) — create it fresh
     alertMarker = L.circleMarker(latlng, {
       radius: 10,
-      color: '#cc0000',     
-      fillColor: '#f52323', 
+      color: ALERT_STROKE_COLOR,
+      fillColor: ALERT_FILL_COLOR,
       fillOpacity: 0.9,
-      weight: 2,             
+      weight: 2,
     })
       .bindTooltip(props.warningText || 'Warning', { permanent: false }) // permanent: false = only shows on hover, not always visible
       .addTo(map)
@@ -123,6 +144,83 @@ function updateObjectMarkers() {
   })
 }
 
+// circle (always) + a small triangular arrow (hidden via opacity until a
+// real heading is known) - one icon, the arrow toggled/rotated in place
+// rather than swapping icons, see updateEgoMarker()
+function buildEgoIcon() {
+  return L.divIcon({
+    className: '', // overrides Leaflet's default 'leaflet-div-icon' class (a white box + border) - the SVG below is the whole visual
+    html: `
+      <div class="ego-icon-rotate" style="transform: rotate(0deg);">
+        <svg width="26" height="26" viewBox="0 0 26 26">
+          <circle cx="13" cy="13" r="8" fill="${EGO_COLOR}" stroke="#ffffff" stroke-width="2" />
+          <path class="ego-arrow" d="M13 2 L17.5 11.5 L13 9 L8.5 11.5 Z" fill="${EGO_COLOR}" stroke="#ffffff" stroke-width="1" style="opacity: 0; transition: opacity 0.25s ease;" />
+        </svg>
+      </div>
+    `,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  })
+}
+
+function updateEgoMarker() {
+  if (!map) return
+
+  if (!props.egoPosition || typeof props.egoPosition.lat !== 'number' || typeof props.egoPosition.lon !== 'number') {
+    if (egoMarker) {
+      map.removeLayer(egoMarker)
+      egoMarker = null
+    }
+    egoHeadingDeg = null
+    lastHeadingRefLatLon = null
+    return
+  }
+
+  const { lat, lon } = props.egoPosition
+  const latlng = [lat, lon]
+
+  // only recompute heading (and only rotate) once the vehicle has actually
+  // moved a meaningful distance since the last computed heading - guards
+  // against the arrow jittering/spinning on GPS noise while stationary
+  if (lastHeadingRefLatLon) {
+    const movedMeters = roughMetersBetween(lastHeadingRefLatLon.lat, lastHeadingRefLatLon.lon, lat, lon)
+    if (movedMeters > 1.0) {
+      egoHeadingDeg = bearingBetween(lastHeadingRefLatLon.lat, lastHeadingRefLatLon.lon, lat, lon)
+      lastHeadingRefLatLon = { lat, lon }
+    }
+  } else {
+    lastHeadingRefLatLon = { lat, lon } // first-ever fix - nothing to compute a bearing from yet
+  }
+
+  if (egoMarker) {
+    egoMarker.setLatLng(latlng)
+  } else {
+    egoMarker = L.marker(latlng, { icon: buildEgoIcon() })
+      .bindTooltip('You (GPS)', { permanent: false })
+      .addTo(map)
+  }
+
+  if (egoHeadingDeg !== null) {
+    const el = egoMarker.getElement()
+    const rotateEl = el?.querySelector('.ego-icon-rotate')
+    const arrowEl = el?.querySelector('.ego-arrow')
+    if (rotateEl) rotateEl.style.transform = `rotate(${egoHeadingDeg}deg)`
+    if (arrowEl) arrowEl.style.opacity = '1'
+  }
+
+  // center on the FIRST ego fix only, same one-time pattern as the alert
+  // pin's hasCenteredOnAlert - every fix after that just moves the marker,
+  // no continuous recentering (that would fight manual panning in a way a
+  // single one-time center doesn't). Without even the one-time center, a
+  // real GPS location far from DEFAULT_CENTER - a different test site, or
+  // any future mismatch between the two - would move the marker somewhere
+  // off-screen with nothing to make it visible.
+  if (!hasCenteredOnEgo) {
+    map.setView(latlng, 18)
+    hasCenteredOnEgo = true
+  }
+}
+
 onMounted(() => {
   map = L.map(mapContainer.value).setView(DEFAULT_CENTER, 18)
 
@@ -133,6 +231,7 @@ onMounted(() => {
 
   updateAlertMarker()
   updateObjectMarkers()
+  updateEgoMarker()
 })
 
 onBeforeUnmount(() => {
@@ -144,16 +243,19 @@ onBeforeUnmount(() => {
 
 watch(() => [props.isWarning, props.lat, props.lon, props.warningText], updateAlertMarker)
 watch(() => props.frame, updateObjectMarkers)
+watch(() => props.egoPosition, updateEgoMarker)
 </script>
 
 <template>
   <div ref="mapContainer" class="map"></div>
+  <EgoCoordinatesBox v-if="showGpsBox" :ego-position="egoPosition" />
+  <MapLegend :items="legendItems" />
 </template>
 
 <style scoped>
 .map {
   position: absolute;
-  inset: 0;      
-  z-index: 0;     
+  inset: 0;
+  z-index: 0;
 }
 </style>

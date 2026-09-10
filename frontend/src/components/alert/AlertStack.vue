@@ -7,9 +7,10 @@ import AlertControls from './AlertControls.vue'
 const props = defineProps({
   alerts: { type: Array, default: () => [] }, // newest/top of stack first
   connected: Boolean,
-  showMap: Boolean, // true - map is visible / false - its off
+  viewMode: { type: String, default: 'both' }, // 'both' | 'map' | 'alerts'
+  showGpsBox: Boolean,
 })
-defineEmits(['toggle-map'])
+defineEmits(['set-view-mode', 'toggle-gps-box'])
 
 const hasActiveAlerts = computed(() => props.alerts.length > 0)
 const { soundEnabled, soundBlockedMessage, toggleSound } = useVoiceAlarm(toRef(hasActiveAlerts))
@@ -34,22 +35,28 @@ watch(
 
 <template>
   <!-- always top-anchored, whether or not the map is showing - multiple
-       alerts stack downward from here, newest on top, all shown in full -->
-  <div class="overlay">
+       alerts stack downward from here, newest on top, all shown in full.
+       Hidden entirely in 'map' mode - not even the connecting-status text,
+       since that's alert-system chrome too. -->
+  <div v-if="viewMode !== 'map'" class="overlay">
     <div v-if="!connected" class="status">Connecting to backend...</div>
 
     <TransitionGroup v-else ref="stackEl" tag="div" name="stack" class="stack">
       <AlertCardFull v-for="alert in alerts" :key="alert.id" :alert="alert" />
     </TransitionGroup>
 
-    <div v-if="connected && !hasActiveAlerts && !showMap" class="idle">No warning</div>
+    <div v-if="connected && !hasActiveAlerts && viewMode === 'alerts'" class="idle">No warning</div>
   </div>
 
+  <!-- AlertControls always renders regardless of viewMode - it's the
+       switcher, so it can never itself be mode-hidden or there'd be no way back -->
   <AlertControls
-    :show-map="showMap"
+    :view-mode="viewMode"
+    :show-gps-box="showGpsBox"
     :sound-enabled="soundEnabled"
     :sound-blocked-message="soundBlockedMessage"
-    @toggle-map="$emit('toggle-map')"
+    @set-view-mode="$emit('set-view-mode', $event)"
+    @toggle-gps-box="$emit('toggle-gps-box')"
     @toggle-sound="toggleSound"
   />
 </template>

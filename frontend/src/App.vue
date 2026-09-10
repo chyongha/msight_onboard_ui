@@ -11,27 +11,38 @@ const {
   connected,   // whether the socketio connection to the backend is open
   lat, lon,    // location of the newest alert (both null initially)
   frame,       // latest live tracking event
+  egoPosition, // this vehicle's own latest GPS fix
 } = useMsightSocket()
 
-const showMap = ref(true) // true = map visible / false = only banner visible
+// 'both' (default, today's behavior) | 'map' | 'alerts' - alert cards used
+// to always overlay the map whenever any were active, blocking it; this
+// lets the map be viewed alone, or the alerts alone, not just both-or-banner
+const viewMode = ref('both')
+// independent of viewMode - shown by default (matches the box's prior
+// always-on behavior), but toggleable on its own now
+const showGpsBox = ref(true)
 </script>
 
 <template>
   <div class="app">
     <MapView
-      v-if="showMap"
+      v-if="viewMode !== 'alerts'"
       :is-warning="isWarning"
       :lat="lat"
       :lon="lon"
       :warning-text="warningText"
       :frame="frame"
+      :ego-position="egoPosition"
+      :show-gps-box="showGpsBox"
     />
     <!-- Always rendered regardless -->
     <AlertStack
       :alerts="alerts"
       :connected="connected"
-      :show-map="showMap"
-      @toggle-map="showMap = !showMap"
+      :view-mode="viewMode"
+      :show-gps-box="showGpsBox"
+      @set-view-mode="viewMode = $event"
+      @toggle-gps-box="showGpsBox = !showGpsBox"
     />
   </div>
 </template>

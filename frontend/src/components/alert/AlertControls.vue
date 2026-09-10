@@ -1,16 +1,24 @@
 <script setup>
 defineProps({
-  showMap: Boolean,
+  viewMode: String, // 'both' | 'map' | 'alerts'
+  showGpsBox: Boolean,
   soundEnabled: Boolean,
   soundBlockedMessage: String,
 })
-defineEmits(['toggle-map', 'toggle-sound'])
+defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sound'])
 </script>
 
 <template>
   <div class="controls">
-    <button type="button" class="control-btn" @click="$emit('toggle-map')">
-      {{ showMap ? 'Hide map (field test)' : 'Show map' }}
+    <!-- segmented, not a single cycling button - jump straight to the
+         mode you want instead of clicking through the other two first -->
+    <div class="segmented">
+      <button type="button" class="control-btn segment" :class="{ active: viewMode === 'both' }" @click="$emit('set-view-mode', 'both')">Both</button>
+      <button type="button" class="control-btn segment" :class="{ active: viewMode === 'map' }" @click="$emit('set-view-mode', 'map')">Map</button>
+      <button type="button" class="control-btn segment" :class="{ active: viewMode === 'alerts' }" @click="$emit('set-view-mode', 'alerts')">Alerts</button>
+    </div>
+    <button type="button" class="control-btn" :class="{ active: showGpsBox }" @click="$emit('toggle-gps-box')">
+      {{ showGpsBox ? 'Hide GPS box' : 'Show GPS box' }}
     </button>
     <button type="button" class="control-btn" :class="{ active: soundEnabled }" @click="$emit('toggle-sound')">
       {{ soundEnabled ? 'Disable voice alarm' : 'Enable voice alarm' }}
@@ -30,6 +38,10 @@ defineEmits(['toggle-map', 'toggle-sound'])
   align-items: flex-start;
   gap: var(--space-2);
   font-family: var(--font-sans);
+}
+.segmented {
+  display: flex;
+  gap: 4px;
 }
 .control-btn {
   padding: 7px 12px;

@@ -43,6 +43,8 @@ export function useMsightSocket() {
   const connected = ref(false)
   // latest live tracking frame
   const frame = ref(null)
+  // this vehicle's own latest GPS fix - { lat, lon, timestamp } or null before the first one arrives
+  const egoPosition = ref(null)
 
   let socket = null
   let nextId = 1
@@ -108,6 +110,11 @@ export function useMsightSocket() {
     socket.on('frame', (data) => {
       frame.value = data
     })
+
+    // this vehicle's own GPS - new fix replaces the previous one, same as frame
+    socket.on('ego', (data) => {
+      egoPosition.value = data
+    })
   })
 
   // cleanup
@@ -125,5 +132,5 @@ export function useMsightSocket() {
   const lat = computed(() => topAlert.value?.lat ?? null)
   const lon = computed(() => topAlert.value?.lon ?? null)
 
-  return { alerts, isWarning, warningText, lat, lon, connected, frame }
+  return { alerts, isWarning, warningText, lat, lon, connected, frame, egoPosition }
 }

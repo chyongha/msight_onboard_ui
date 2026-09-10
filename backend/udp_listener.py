@@ -49,3 +49,16 @@ def start_tracking_listener(socketio, host='0.0.0.0', port=4001):
         target=_listen_loop, args=(socketio, host, port, _decode_tracking_frame, 'frame'),
         daemon=True,
     ).start()
+
+
+def _decode_ego_frame(raw_bytes: bytes) -> dict:
+    # Already flat lat, long, timestamp format received by the gps_bridge.py or mock_sender.py 
+    return json.loads(raw_bytes.decode('utf-8'))
+
+
+def start_ego_listener(socketio, host='0.0.0.0', port=4002):
+    """Live ego (this vehicle's own GPS) position -> 'ego' events."""
+    threading.Thread(
+        target=_listen_loop, args=(socketio, host, port, _decode_ego_frame, 'ego'),
+        daemon=True,
+    ).start()

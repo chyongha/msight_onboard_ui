@@ -20,10 +20,17 @@ from geometry import offset_latlon
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 TARGET = ('127.0.0.1', config.UDP_PORT)
 TRACKING_TARGET = ('127.0.0.1', config.TRACKING_UDP_PORT)
+EGO_TARGET = ('127.0.0.1', config.EGO_UDP_PORT)
 
-# random coordinates
-INTERSECTION_LAT = 39.99
-INTERSECTION_LON = -83.00
+# matches MapView.vue's DEFAULT_CENTER (frontend/src/components/MapView.vue)
+# so mock data actually lands where the map opens by default - previously
+# these were unrelated ("random coordinates"), which meant simulated ego
+# GPS motion was real and correct but hundreds of km off-screen, with
+# nothing to make it visible (no auto-centering on ego updates) - only the
+# coordinates box, which doesn't care where the map is pointed, showed
+# anything was happening at all
+INTERSECTION_LAT = 42.2975
+INTERSECTION_LON = -83.7042
 
 
 def send_hex(hex_str: str, label: str):
@@ -218,6 +225,23 @@ def tracking_loop():
         time.sleep(0.2)
 
 
+# stands in for gps_bridge.py (the real ROS2 bridge, see veh_coord_node/) -
+# same 'ego' UDP target, same {lat, lon, timestamp} payload shape, just a
+# fake looping path near the intersection instead of a real GPS fix
+def simulate_ego_position(t: float):
+    east = 20.0 * (t % 8.0 - 4.0) / 4.0  # sawtooth: -20m to +20m and back, so it's visibly moving without wandering off the map
+    lat, lon = offset_latlon(INTERSECTION_LAT, INTERSECTION_LON, east, -10.0)
+    return {'lat': lat, 'lon': lon, 'timestamp': time.time()}
+
+
+def ego_loop():
+    t = 0.0
+    while True:
+        sock.sendto(json.dumps(simulate_ego_position(t)).encode('utf-8'), EGO_TARGET)
+        t += 0.5
+        time.sleep(0.5)
+
+
 # demo 
 def send_events_sequence():
     msg_cnt = 0
@@ -313,6 +337,7 @@ def send_stack_demo():
 
 if __name__ == '__main__':
     threading.Thread(target=tracking_loop, daemon=True).start()
+    threading.Thread(target=ego_loop, daemon=True).start()
     mode = sys.argv[1] if len(sys.argv) > 1 else None
 
     if mode == 'stack-demo':
