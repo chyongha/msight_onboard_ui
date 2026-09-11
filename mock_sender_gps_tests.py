@@ -15,6 +15,7 @@ Run one scenario at a time:
     python mock_sender_gps_tests.py signal-loss
     python mock_sender_gps_tests.py with-alerts
 """
+import tqdm
 import json
 import sys
 import time
@@ -33,12 +34,12 @@ def send_ego_fix(lat: float, lon: float):
     sock.sendto(json.dumps({'lat': lat, 'lon': lon, 'timestamp': time.time()}).encode('utf-8'), EGO_TARGET)
 
 
-def moving(duration_s: float = 30.0):
+def moving(duration_s: float = 15.0):
     """Baseline - the same back-and-forth path mock_sender.py's ego_loop() sends continuously."""
     print(f'=== moving: sending a back-and-forth GPS path for {duration_s:.0f}s ===')
+    steps = int(duration_s / 0.5)
     t = 0.0
-    end = time.time() + duration_s
-    while time.time() < end:
+    for _ in tqdm.tqdm(range(steps), desc='moving', unit='fix'):
         fix = simulate_ego_position(t)
         sock.sendto(json.dumps(fix).encode('utf-8'), EGO_TARGET)
         t += 0.5

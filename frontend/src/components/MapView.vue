@@ -148,18 +148,25 @@ function updateObjectMarkers() {
 // real heading is known) - one icon, the arrow toggled/rotated in place
 // rather than swapping icons, see updateEgoMarker()
 function buildEgoIcon() {
+  // bigger than the first version (26->36px), and the arrow redrawn to sit
+  // mostly ABOVE the circle (tip near the very top of the icon, base just
+  // touching the circle's edge) instead of deep inside it - the previous
+  // arrow's base (y=11.5) sat well past the circle's own edge (y=5) in a
+  // 16px-diameter circle, so the two blended into one blob. Anchoring stays
+  // on the circle's center (the real GPS point), unaffected by the arrow
+  // extending upward past it.
   return L.divIcon({
     className: '', // overrides Leaflet's default 'leaflet-div-icon' class (a white box + border) - the SVG below is the whole visual
     html: `
       <div class="ego-icon-rotate" style="transform: rotate(0deg);">
-        <svg width="26" height="26" viewBox="0 0 26 26">
-          <circle cx="13" cy="13" r="8" fill="${EGO_COLOR}" stroke="#ffffff" stroke-width="2" />
-          <path class="ego-arrow" d="M13 2 L17.5 11.5 L13 9 L8.5 11.5 Z" fill="${EGO_COLOR}" stroke="#ffffff" stroke-width="1" style="opacity: 0; transition: opacity 0.25s ease;" />
+        <svg width="36" height="36" viewBox="0 0 36 36">
+          <circle cx="18" cy="18" r="9" fill="${EGO_COLOR}" stroke="#ffffff" stroke-width="2.5" />
+          <path class="ego-arrow" d="M18 2 L24 12 L18 9 L12 12 Z" fill="${EGO_COLOR}" stroke="#ffffff" stroke-width="1.5" style="opacity: 0; transition: opacity 0.25s ease;" />
         </svg>
       </div>
     `,
-    iconSize: [26, 26],
-    iconAnchor: [13, 13],
+    iconSize: [36, 36],
+    iconAnchor: [18, 18],
   })
 }
 

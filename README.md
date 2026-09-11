@@ -32,6 +32,7 @@ roadside box, just with different env vars set.
 | `BACKEND_PORT` | `5000` | Port for the Flask/Socket.IO server. |
 | `UDP_PORT` | `4000` | Port the UDP listener binds to, for incoming ICA/RSA alert messages. |
 | `TRACKING_UDP_PORT` | `4001` | Port the (mocked, see below) live-tracking UDP listener binds to. |
+| `EGO_UDP_PORT` | `4002` | Port the live ego (this vehicle's own GPS) listener binds to - see `gps_bridge.py` below. |
 | `FRONTEND_ORIGIN` | `*` | Origin(s) allowed to open a Socket.IO connection. `*` is fine for local dev; lock this to the real frontend's origin once deployed somewhere with untrusted network access. |
 
 **Frontend** (copy `frontend/.env.example` to `frontend/.env` and edit):
@@ -52,16 +53,20 @@ cd backend
 export PYV2XLIB_VENDOR_DIR=/path/to/folder/containing/v2xlib.py
 python app.py
 ```
-Should print `Backend running at http://127.0.0.1:5000` and two
-`[udp] Listening on 0.0.0.0:...` lines (alerts + tracking), then keep running.
+Should print `Backend running at http://127.0.0.1:5000` and three
+`[udp] Listening on 0.0.0.0:...` lines (alerts, tracking, ego), then keep running.
 
-**Terminal 2 — mock sender** (stands in for a real RSU; sends real
-encoded ICA/RSA hex messages over UDP, plus a simulated live-tracking
-feed, so you can test without hardware)
+**Terminal 2 — mock sender** (stands in for a real RSU *and* the real
+`gps_bridge.py`; sends real encoded ICA/RSA hex messages over UDP, plus a
+simulated live-tracking feed and a simulated ego GPS path, so you can test
+without any hardware)
 ```bash
 export PYV2XLIB_VENDOR_DIR=/path/to/folder/containing/v2xlib.py
 python mock_sender.py
 ```
+For GPS-specific scenarios (a stationary vehicle, a dropped signal, etc.),
+see `mock_sender_gps_tests.py` instead - `python mock_sender_gps_tests.py`
+with no arguments lists them.
 
 **Terminal 3 — frontend**
 ```bash
@@ -69,6 +74,33 @@ cd frontend
 npm run dev
 ```
 Open the URL it prints (port 3000 by default).
+
+## Running the real GPS bridge
+
+`gps_bridge.py` (project root) is what feeds the map's live ego marker from
+a *real* vehicle, instead of `mock_sender.py`'s simulated path - it
+subscribes to the real ROS2 topic a vehicle's GPS/INS driver publishes on
+(`/ins/nav_sat_fix`, the same mechanism proven in `veh_coord_node/
+sub_veh_ros2.py`) and forwards each fix to the backend over UDP.
+
+This needs an actual ROS2 environment - `rclpy` is not a `pip install`able
+package, it has to come from a real ROS2 distribution (installed via `apt`
+on Ubuntu, or a Docker/VM sandbox for local development on other OSes). Run
+it separately from the Flask backend's own Python environment, wherever it
+can actually reach the vehicle's ROS2 network - almost certainly the
+vehicle's own onboard computer, not necessarily the same machine the
+backend runs on:
+```bash
+BACKEND_HOST=192.168.1.50 EGO_UDP_PORT=4002 python3 gps_bridge.py
+```
+(`BACKEND_HOST` defaults to `127.0.0.1`, `EGO_UDP_PORT` to `4002` - only
+override what's actually different from the backend's own `config.py` values.)
+
+Because `mock_sender.py`/`mock_sender_gps_tests.py` send the exact same
+`{lat, lon, timestamp}` JSON to the same port, testing entirely with the
+mocks (no ROS2, no vehicle) already exercises the identical backend/
+frontend code path `gps_bridge.py` feeds for real - not an approximation of
+the real integration, the same one.
 
 ## How it works
 
@@ -88,7 +120,7 @@ RSU --(UDP, ASCII hex string)--> udp_listener.py --> decoder.py
                                                           |
                                                           v
                                     useSocket.js (frontend) -> MapView.vue
-                                                             -> WarningBanner.vue
+                                                             -> AlertStack.vue (the card stack)
 
 Live tracking (separate UDP port, separate socket event):
 
@@ -99,6 +131,15 @@ Live tracking (separate UDP port, separate socket event):
                                          via geometry.py)
                                                           |
                                           socketio.emit('frame', ...)
+                                                          |
+                                                          v
+                                    useSocket.js (frontend) -> MapView.vue
+
+This vehicle's own live GPS position (separate UDP port, separate socket event):
+
+gps_bridge.py --(UDP, JSON: {lat, lon, timestamp})--> udp_listener.py
+                                                          |
+                                          socketio.emit('ego', ...)
                                                           |
                                                           v
                                     useSocket.js (frontend) -> MapView.vue

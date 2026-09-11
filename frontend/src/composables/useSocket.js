@@ -2,10 +2,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
-// how long an alert stays on screen after its most recent broadcast 
+// how long an alert stays on screen after its most recent broadcast
 export const CLEAR_AFTER_MS = 7000
 // cap on simultaneously stacked alerts
 const MAX_ALERTS = 4
+// UDP has no "disconnected" signal - the only way to notice the GPS feed
+// went quiet is the absence of a new fix for a while. 2s is fast enough to
+// notice a real dropout quickly, while staying safely above the expected
+// fix interval (the mock sends every 0.5s; real RTK/INS hardware typically
+// updates at 1-10Hz) so one slightly-delayed packet doesn't flicker it
+export const EGO_STALE_AFTER_MS = 2000
 
 // Falls back to local dev if no .env file available
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:5000'
@@ -49,6 +55,12 @@ export function useMsightSocket() {
   let socket = null
   let nextId = 1
   const clearTimers = new Map() // alert id -> timeout handle
+  let egoStaleTimer = null // single timer - there's only ever one ego position, unlike the per-alert Map above
+
+  function scheduleEgoStale() {
+    if (egoStaleTimer) clearTimeout(egoStaleTimer)
+    egoStaleTimer = setTimeout(() => { egoPosition.value = null }, EGO_STALE_AFTER_MS)
+  }
 
   function stopTimer(id) {
     const timer = clearTimers.get(id)
@@ -111,9 +123,12 @@ export function useMsightSocket() {
       frame.value = data
     })
 
-    // this vehicle's own GPS - new fix replaces the previous one, same as frame
+    // this vehicle's own GPS - new fix replaces the previous one, and
+    // restarts the staleness timer so it doesn't just freeze if the feed
+    // goes quiet (see EGO_STALE_AFTER_MS above)
     socket.on('ego', (data) => {
       egoPosition.value = data
+      scheduleEgoStale()
     })
   })
 
@@ -121,6 +136,7 @@ export function useMsightSocket() {
   onUnmounted(() => {
     clearTimers.forEach((timer) => clearTimeout(timer))
     clearTimers.clear()
+    if (egoStaleTimer) clearTimeout(egoStaleTimer)
     if (socket) socket.disconnect()
   })
 
