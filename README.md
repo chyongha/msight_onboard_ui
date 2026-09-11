@@ -21,9 +21,6 @@ see below). Built with Flask + Flask-SocketIO (backend) and Vue 3 + Vite
 
 ## Configuration (env vars)
 
-Nothing here is hardcoded — same code runs on a dev laptop or a deployed
-roadside box, just with different env vars set.
-
 **Backend** (`backend/config.py`):
 
 | Var | Default | What it's for |
@@ -44,6 +41,13 @@ roadside box, just with different env vars set.
 
 `mock_sender.py` reads `UDP_PORT`/`TRACKING_UDP_PORT` from the same
 `backend/config.py` as the real backend, so they can't drift apart.
+
+## Setup
+- conda create -n msight_ui_test python=3.11
+- pip install > backend/requirements.txt
+- cd frontend 
+  npm install
+- PYV2XLIB_VENDOR_DIR=/path/to/v2xlib.py
 
 ## Running it (3 terminals)
 
