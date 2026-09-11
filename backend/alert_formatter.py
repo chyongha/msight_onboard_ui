@@ -1,46 +1,22 @@
 """
-Turns a decoded ICA/RSA dict into the shape frontend can understand:
-    {type, warning, text, headline, events, lat, lon, timestamp, occurred_at, severity, category, subject, extent, direction_slices, trajectory}
+Turns a decoded ICA/RSA dict for the frontend 
+    {type, warning, text, headline, events, lat, lon, timestamp, occurred_at, 
+    severity, category, subject, extent, direction_slices, trajectory}
 
-text: flattened one-line summary, used for the map alert-pin tooltip
-    (MapView.vue) - always a single string for both message types.
-headline: the single key primary event. Only RSA (typeEvent)
+text: flattened one-line summary 
+headline: the single key primary event. Only RSA typeevent 
 events: the card's bulleted/chipped list. For ICA this is every active
-    eventFlag condition (the whole story - ICA has no separate headline)
-    For RSA this is description code that supports the RSA's typeEvent flag
-subject: info about who/what triggered the alert - speed/heading (still
-    read by DirectionIndicator.vue's arrow even though AlertSubject.vue no
-    longer chips them, to avoid showing the same fact twice), any active
-    brake/traction/stability flags, plus for ICA specifically: gear,
-    steering angle, forward accel, and vehicle size. For ICA this is
-    partOne, the offending vehicle's own BSM core data - always present.
-    For RSA it's whatever heading/speed came with the position report.
-extent: RSA only (None for ICA) - humanized "how far past the hazard this
-    stays relevant" (e.g. "Applies for 500m"), from the RSA's own top-level
-    `extent` field (a sibling of `position`, not part of it - it's a fact
-    about the hazard's geographic scope, not about a participant, so it
-    doesn't live inside `subject`).
-timestamp: epoch seconds when THIS BACKEND relayed/decoded the message -
-    unchanged, still drives the countdown bar's duration and the
-    `:key`-based replay-on-refresh trick used by the countdown bar, the
-    header icon, and DirectionIndicator's arrow. Don't repurpose this one.
+    eventFlag condition. For RSA this is description 
+subject: info about who/what triggered the alert - speed/heading, any active
+    brake/traction/stability flags, for ICA it is partOne data: gear,
+    steering angle, forward accel, and vehicle size. 
+extent: RSA only - how far past the alert is significant 
+timestamp: epoch seconds when the backend relayed the message 
 occurred_at: epoch seconds for "when the event actually happened," shown
-    in the header instead of a live "Xs ago". Prefers the message's own
-    `timeStamp` field (minutes elapsed in the CURRENT YEAR - the message
-    carries no year, so this assumes "this year"; also minute precision
-    only, not exact-second) over `timestamp` above. Falls back to
-    `timestamp` when the message didn't set `timeStamp` (optional field,
-    most of mock_sender.py's scenarios don't set it).
-direction_slices: RSA only (None for ICA) - which ~22.5deg compass slices
-    this alert applies to, from RSA's top-level `heading` field (a 16-bit
-    HeadingSlice bitmask - NOT a single moving object's direction, so this
-    is a genuinely different fact from `subject`'s heading_deg/speed_mps,
-    shown as a second, separate visualization rather than merged with it).
-    List of {index, label} for each set bit, or None if `heading` wasn't
-    set/was zero.
+    in the header instead of a live "Xs ago"
+direction_slices: RSA only for which ~22.5deg compass slices this alert applies to
 trajectory: recent path of the offending vehicle, decoded from ICA's
-    path.crumbData breadcrumbs. None when there isn't at least an anchor +
-    one usable crumb point
+    path.crumbData breadcrumbs
 """
 import re
 import time
@@ -170,12 +146,8 @@ def _clean_coord(value):
 def _event_epoch(raw: dict, relay_time: float) -> float:
     """
     "When the event actually happened," not "when we noticed it." Prefers
-    the message's own `timeStamp` (minutes elapsed in the CURRENT YEAR -
-    the field carries no year at all, so this assumes the message is from
-    "this year"; minute precision only) over `relay_time` (this backend's
-    own time.time() at decode time). Falls back to relay_time when
-    timeStamp wasn't set - it's optional, and most of mock_sender.py's
-    scenarios don't set it.
+    the message's own `timeStamp` over `relay_time`. Falls back to relay_time when
+    timeStamp wasn't set 
     """
     minutes = raw.get('timeStamp')
     if not isinstance(minutes, int):
@@ -244,9 +216,7 @@ def _ica_subject(part_one: dict) -> dict | None:
 def _ica_trajectory(part_one: dict, path: dict) -> list | None:
     """
     recent path of the offending vehicle 
-    from partOne's timeOffset seconds in the past (oldest to newest)
-    ends at vehicle's current position
-    none if there is nothing usable to draw 
+    from partOne's timeOffset seconds in the past (oldest to newest) ends at vehicle's current position
     """
     if not part_one or not path:
         return None
@@ -368,11 +338,8 @@ _RSA_EXTENT_LABELS = {
 
 def _rsa_extent_label(extent) -> str | None:
     """
-    Humanizes RSA's `extent` enum ('useFor500meters', 'forever',
-    'useInstantlyOnly', ...) into "how far past the hazard this stays
-    relevant" banner text. None if extent wasn't set (the encoder omits the
-    field entirely rather than defaulting it, so this is common) or isn't
-    one of the recognized enum values.
+    Edit RSA's `extent` enum into how far past the hazard this stays
+    relevan" banner text.
     """
     if not isinstance(extent, str):
         return None

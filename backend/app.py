@@ -10,7 +10,7 @@ import config
 from udp_listener import start_udp_listener, start_tracking_listener, start_ego_listener
 
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins=config.FRONTEND_ORIGIN) # tells flask to accept socketio connection from frontend
+socketio = SocketIO(app, cors_allowed_origins=config.FRONTEND_ORIGIN) # main thread - tells flask to accept socketio connection from frontend
 
 if __name__ == '__main__':
     # start listening for UDP packets on background threads
