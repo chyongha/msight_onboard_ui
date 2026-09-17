@@ -10,15 +10,9 @@ def load_v2xlib(
     module_filename: str = "v2xlib.py",
 ):
     """
-    Load vendor-provided v2xlib.py from a directory specified by an
-    environment variable, falling back to the project root (where it
-    lives today) if the env var isn't set.
-
-    Usage:
-        v2xlib = load_v2xlib()
+    load v2xlib.py 
     """
     vendor_dir = os.environ.get(env_var, _PROJECT_ROOT)
-
     module_path = os.path.join(vendor_dir, module_filename)
     if not os.path.isfile(module_path):
         raise FileNotFoundError(f"Vendor module file not found: {module_path}")

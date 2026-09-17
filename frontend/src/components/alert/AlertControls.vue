@@ -2,10 +2,11 @@
 defineProps({
   viewMode: String, // 'both' | 'map' | 'alerts'
   showGpsBox: Boolean,
+  showSdsm: Boolean,
   soundEnabled: Boolean,
   soundBlockedMessage: String,
 })
-defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sound'])
+defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sdsm', 'toggle-sound'])
 </script>
 
 <template>
@@ -19,6 +20,9 @@ defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sound'])
     </div>
     <button type="button" class="control-btn" :class="{ active: showGpsBox }" @click="$emit('toggle-gps-box')">
       {{ showGpsBox ? 'Hide GPS box' : 'Show GPS box' }}
+    </button>
+    <button type="button" class="control-btn" :class="{ active: showSdsm }" @click="$emit('toggle-sdsm')">
+      {{ showSdsm ? 'Hide SDSM' : 'Show SDSM' }}
     </button>
     <button type="button" class="control-btn" :class="{ active: soundEnabled }" @click="$emit('toggle-sound')">
       {{ soundEnabled ? 'Disable voice alarm' : 'Enable voice alarm' }}

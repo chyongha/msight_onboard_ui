@@ -12,6 +12,7 @@ const {
   lat, lon,    // location of the newest alert (both null initially)
   frame,       // latest live tracking event
   egoPosition, // this vehicle's own latest GPS fix
+  sdsmFrame,   // latest SDSM sensor frame (real detected objects, not an alert)
 } = useMsightSocket()
 
 // 'both' (default, today's behavior) | 'map' | 'alerts' - alert cards used
@@ -21,6 +22,10 @@ const viewMode = ref('both')
 // independent of viewMode - shown by default (matches the box's prior
 // always-on behavior), but toggleable on its own now
 const showGpsBox = ref(true)
+// SDSM is a data layer (real detected objects), not chrome like the GPS
+// box - off by default until asked for, so it doesn't clutter the map
+// before anyone's opted into it
+const showSdsm = ref(false)
 </script>
 
 <template>
@@ -34,6 +39,8 @@ const showGpsBox = ref(true)
       :frame="frame"
       :ego-position="egoPosition"
       :show-gps-box="showGpsBox"
+      :sdsm-frame="sdsmFrame"
+      :show-sdsm="showSdsm"
     />
     <!-- Always rendered regardless -->
     <AlertStack
@@ -41,8 +48,10 @@ const showGpsBox = ref(true)
       :connected="connected"
       :view-mode="viewMode"
       :show-gps-box="showGpsBox"
+      :show-sdsm="showSdsm"
       @set-view-mode="viewMode = $event"
       @toggle-gps-box="showGpsBox = !showGpsBox"
+      @toggle-sdsm="showSdsm = !showSdsm"
     />
   </div>
 </template>

@@ -9,8 +9,9 @@ const props = defineProps({
   connected: Boolean,
   viewMode: { type: String, default: 'both' }, // 'both' | 'map' | 'alerts'
   showGpsBox: Boolean,
+  showSdsm: Boolean,
 })
-defineEmits(['set-view-mode', 'toggle-gps-box'])
+defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sdsm'])
 
 const hasActiveAlerts = computed(() => props.alerts.length > 0)
 const { soundEnabled, soundBlockedMessage, toggleSound } = useVoiceAlarm(toRef(hasActiveAlerts))
@@ -53,10 +54,12 @@ watch(
   <AlertControls
     :view-mode="viewMode"
     :show-gps-box="showGpsBox"
+    :show-sdsm="showSdsm"
     :sound-enabled="soundEnabled"
     :sound-blocked-message="soundBlockedMessage"
     @set-view-mode="$emit('set-view-mode', $event)"
     @toggle-gps-box="$emit('toggle-gps-box')"
+    @toggle-sdsm="$emit('toggle-sdsm')"
     @toggle-sound="toggleSound"
   />
 </template>

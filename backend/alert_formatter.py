@@ -17,12 +17,16 @@ occurred_at: epoch seconds for "when the event actually happened," shown
 direction_slices: RSA only for which ~22.5deg compass slices this alert applies to
 trajectory: recent path of the offending vehicle, decoded from ICA's
     path.crumbData breadcrumbs
+
+Since SDSM is a sensor frame (a reporting station + a list of currently-detected objects), it is not an alert 
+and gets its own minimal shape.
 """
 import re
 import time
 from datetime import datetime
 
 from codec.itis_codes import ITIS
+from geometry import offset_latlon
 
 # ITIS code of the event : name of the event
 _ITIS_NAME_BY_CODE = {code: name for name, code in ITIS.items()}
@@ -143,12 +147,23 @@ def _clean_coord(value):
     return value
 
 
-def _event_epoch(raw: dict, relay_time: float) -> float:
+def _event_epoch(message_type: str, raw: dict, relay_time: float) -> float:
     """
     "When the event actually happened," not "when we noticed it." Prefers
     the message's own `timeStamp` over `relay_time`. Falls back to relay_time when
     timeStamp wasn't set 
     """
+    if message_type == "sdsm":
+        ts = raw.get('sDSMTimeStamp') or {}
+        month, day, hour, minute = ts.get('month'), ts.get('day'), ts.get('hour'), ts.get('minute')
+        if None in (month, day, hour, minute):
+            return relay_time
+        year = ts.get('year') or datetime.now().year
+        second = ts.get('second', 0)
+        try:
+            return datetime(year, month, day, hour, minute).timestamp() + second
+        except ValueError:
+            return relay_time
     minutes = raw.get('timeStamp')
     if not isinstance(minutes, int):
         return relay_time
@@ -268,7 +283,7 @@ def format_ica(ica: dict) -> dict:
         'lat': lat,
         'lon': lon,
         'timestamp': relay_time,
-        'occurred_at': _event_epoch(ica, relay_time),
+        'occurred_at': _event_epoch("ica", ica, relay_time),
         'subject': _ica_subject(part_one),
         'extent': None,  # RSA-only concept - see module docstring
         'direction_slices': None,  # RSA-only concept - see module docstring
@@ -361,14 +376,6 @@ def _rsa_heading_slices(heading) -> list | None:
     travel, that's `subject`'s heading_deg. This is "relevant to traffic
     heading these ways" (can be several, non-adjacent slices at once).
     None when `heading` wasn't set or is zero (nothing to show).
-
-    Bit order verified empirically against the real encoder/decoder
-    (pycrate's BIT STRING numbers named bits MSB-first) with an asymmetric
-    test value, not assumed - ASN.1 named-bit position `i` (0=N slice,
-    going clockwise) corresponds to Python integer bit `(15 - i)`, i.e.
-    OPPOSITE of the naive `1 << i` reading. E.g. heading=4 (`1 << 2`) sets
-    named position 13 (292.5-315deg), not position 2 - confirmed by
-    round-tripping through the actual vendor ASN.1 codec.
     """
     if not isinstance(heading, int) or heading == 0:
         return None
@@ -377,7 +384,7 @@ def _rsa_heading_slices(heading) -> list | None:
         for i in range(16)
         if heading & (1 << (15 - i))
     ]
-
+    
 
 def format_rsa(rsa: dict) -> dict:
     position = rsa.get('position', {})
@@ -408,9 +415,153 @@ def format_rsa(rsa: dict) -> dict:
         'lat': lat,
         'lon': lon,
         'timestamp': relay_time,
-        'occurred_at': _event_epoch(rsa, relay_time),
+        'occurred_at': _event_epoch("rsa", rsa, relay_time),
         'subject': _rsa_subject(position, category),
         'extent': _rsa_extent_label(rsa.get('extent')),
         'direction_slices': _rsa_heading_slices(rsa.get('heading')),
         'trajectory': None,   # no path history for rsa
+    }
+
+
+def _sdsm_object_category(det_common: dict, opt_data) -> str:
+    """
+    opt_data is decoder's `(choice_name, value_dict)` tuple for
+    detObjOptData
+    """
+    opt_choice = opt_data[0] if isinstance(opt_data, (list, tuple)) and opt_data else None
+    if opt_choice == 'detVeh':
+        return 'vehicle'
+    if opt_choice == 'detVRU':
+        return 'vru'
+    if opt_choice == 'detObst':
+        return 'obstacle'
+
+    obj_type = det_common.get('objType')
+    if obj_type in ('vehicle', 'vru', 'animal'):
+        return obj_type
+    return 'unknown'
+
+
+def _sdsm_object_detail(category: str, det_common: dict, opt_data) -> str | None:
+    """Short human string for the object's tooltip/info box - only as much detail as the message actually carries."""
+    opt_choice, opt_value = (opt_data[0], opt_data[1]) if isinstance(opt_data, (list, tuple)) and opt_data else (None, {})
+
+    parts = []
+    if category == 'vehicle' and opt_choice == 'detVeh':
+        lights = opt_value.get('lights')
+        if isinstance(lights, str):  # decoder already turns the recognized codes into a label
+            parts.append(lights)
+        vehicle_class = opt_value.get('vehicleClass')
+        if isinstance(vehicle_class, int):
+            parts.append(f'class {vehicle_class}')
+    elif category == 'vru' and opt_choice == 'detVRU':
+        basic_type = opt_value.get('basicType')
+        if isinstance(basic_type, str):
+            parts.append(basic_type)
+
+    # how confident the sensor is in objType (not in the position/speed) -
+    # available for every category, not just detVeh/detVRU, so it's checked
+    # unconditionally rather than folded into the branches above
+    confidence = det_common.get('objTypeCfd')
+    if isinstance(confidence, int) and confidence > 0:
+        parts.append(f'~{min(confidence, 100)}% confidence')
+
+    return ', '.join(parts) if parts else None
+
+
+def _sdsm_object_size_m(category: str, opt_data) -> str | None:
+    """
+    Human-readable footprint size - only when the message actually carries
+    it for this object's category, never fabricated/defaulted.
+    """
+    opt_choice, opt_value = (opt_data[0], opt_data[1]) if isinstance(opt_data, (list, tuple)) and opt_data else (None, {})
+
+    if category == 'vehicle' and opt_choice == 'detVeh':
+        size = opt_value.get('size') or {}
+        width, length = size.get('width'), size.get('length')
+        if isinstance(width, (int, float)) and isinstance(length, (int, float)):
+            return f'{width:.1f}×{length:.1f}m'
+
+    if category == 'obstacle' and opt_choice == 'detObst':
+        obst_size = opt_value.get('obstSize') or {}
+        width, length = obst_size.get('width'), obst_size.get('length')
+        if isinstance(width, (int, float)) and isinstance(length, (int, float)):
+            return f'{width:.1f}×{length:.1f}m'
+
+    if category == 'vru' and opt_choice == 'detVRU':
+        # SDSMDecoder.py doesn't convert this field the way it does detVeh's
+        # size/height - it's PersonalSafetyMessage.AttachmentRadius per the
+        # real ASN.1 schema, raw units of centimeters
+        radius = opt_value.get('radius')
+        if isinstance(radius, (int, float)) and radius > 0:
+            return f'~{radius / 100:.1f}m radius'
+
+    return None
+
+
+def _sdsm_objects(sdsm: dict, ref_lat: float | None, ref_lon: float | None) -> list:
+    """
+    Turns SDSM's `objects` (each given as a meters offset from refPos, see
+    SDSMDecoder.py) into the exact same per-object shape
+    tracking_formatter.format_tracking_frame() already produces
+    (`{id, lat, lon, category, speed, heading_deg}`), plus `size_m` and
+    `detail` strings - so the frontend can reuse its existing tracking-
+    object marker rendering for SDSM too, just on a separate layer/toggle.
+    Objects still render as fixed-size icons on the map regardless of
+    `size_m` (not scaled to it) - it's informational text only, shown in
+    the tooltip/SdsmInfoBox.
+    """
+    if ref_lat is None or ref_lon is None:
+        return []  # nothing to offset the objects from
+
+    objects = []
+    for obj in sdsm.get('objects', []):
+        det_common = obj.get('detObjCommon') or {}
+        pos = det_common.get('pos') or {}
+        offset_x, offset_y = pos.get('offsetX'), pos.get('offsetY')
+        if not isinstance(offset_x, (int, float)) or not isinstance(offset_y, (int, float)):
+            continue
+
+        # offsetX/offsetY are meters east/north of refPos - the only frame
+        # SDSM gives us, there's no separate heading for the reporting
+        # station itself to rotate this by
+        lat, lon = offset_latlon(ref_lat, ref_lon, offset_x, offset_y)
+
+        opt_data = obj.get('detObjOptData')
+        category = _sdsm_object_category(det_common, opt_data)
+        heading_deg = float(det_common.get('heading') or 0.0)
+        speed = float(det_common.get('speed') or 0.0)
+
+        objects.append({
+            'id': det_common.get('objectID'),
+            'lat': round(lat, 7),
+            'lon': round(lon, 7),
+            'category': category,
+            'speed': round(speed, 2),
+            'heading_deg': round(heading_deg, 1),
+            'size_m': _sdsm_object_size_m(category, opt_data),
+            'detail': _sdsm_object_detail(category, det_common, opt_data),
+        })
+
+    return objects
+
+
+def format_sdsm(sdsm: dict) -> dict:
+    """
+    SDSM is a sensor frame, not an alert - one reporting station plus a list of objects it currently sees
+    """
+    ref_pos = sdsm.get('refPos', {})
+    lat = _clean_coord(ref_pos.get('lat'))
+    lon = _clean_coord(ref_pos.get('long'))
+    relay_time = time.time()
+
+    return {
+        'type': 'SDSM',
+        'source_id': sdsm.get('sourceID'),
+        'equipment_type': sdsm.get('equipmentType'),
+        'lat': lat,
+        'lon': lon,
+        'timestamp': relay_time,
+        'occurred_at': _event_epoch('sdsm', sdsm, relay_time),
+        'objects': _sdsm_objects(sdsm, lat, lon),
     }

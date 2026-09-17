@@ -3,11 +3,13 @@
 // drawing, so the legend can't silently drift out of sync with the map.
 defineProps({
   items: { type: Array, default: () => [] }, // [{ color, label }]
+  title: { type: String, default: '' }, // optional heading, e.g. "SDSM" for the second stacked box
 })
 </script>
 
 <template>
   <div class="legend">
+    <span v-if="title" class="legend-title">{{ title }}</span>
     <div v-for="item in items" :key="item.label" class="row">
       <span class="swatch" :style="{ background: item.color }"></span>
       <span class="label">{{ item.label }}</span>
@@ -17,10 +19,6 @@ defineProps({
 
 <style scoped>
 .legend {
-  position: absolute;
-  bottom: var(--space-3);
-  right: var(--space-3);
-  z-index: 1000;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -31,6 +29,14 @@ defineProps({
   box-shadow: var(--shadow-card);
   font-family: var(--font-sans);
   pointer-events: none;
+}
+.legend-title {
+  font-size: 0.66rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-faint);
+  margin-bottom: 2px;
 }
 .row {
   display: flex;

@@ -11,7 +11,11 @@ const MAX_ALERTS = 4
 // notice a real dropout quickly, while staying safely above the expected
 // fix interval (the mock sends every 0.5s; real RTK/INS hardware typically
 // updates at 1-10Hz) so one slightly-delayed packet doesn't flicker it
-export const EGO_STALE_AFTER_MS = 2000
+export const EGO_STALE_AFTER_MS = 5000
+// same idea as EGO_STALE_AFTER_MS above - a bit more lenient since SDSM's
+// real broadcast cadence isn't known yet, to avoid flicker on a slightly
+// delayed frame
+export const SDSM_STALE_AFTER_MS = 5000
 
 // Falls back to local dev if no .env file available
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:5000'
@@ -51,15 +55,23 @@ export function useMsightSocket() {
   const frame = ref(null)
   // this vehicle's own latest GPS fix - { lat, lon, timestamp } or null before the first one arrives
   const egoPosition = ref(null)
+  // latest SDSM sensor frame - { source_id, equipment_type, lat, lon, timestamp, occurred_at, objects[] } or null
+  const sdsmFrame = ref(null)
 
   let socket = null
   let nextId = 1
   const clearTimers = new Map() // alert id -> timeout handle
   let egoStaleTimer = null // single timer - there's only ever one ego position, unlike the per-alert Map above
+  let sdsmStaleTimer = null // same idea, one timer for the one latest SDSM frame
 
   function scheduleEgoStale() {
     if (egoStaleTimer) clearTimeout(egoStaleTimer)
     egoStaleTimer = setTimeout(() => { egoPosition.value = null }, EGO_STALE_AFTER_MS)
+  }
+
+  function scheduleSdsmStale() {
+    if (sdsmStaleTimer) clearTimeout(sdsmStaleTimer)
+    sdsmStaleTimer = setTimeout(() => { sdsmFrame.value = null }, SDSM_STALE_AFTER_MS)
   }
 
   function stopTimer(id) {
@@ -130,6 +142,14 @@ export function useMsightSocket() {
       egoPosition.value = data
       scheduleEgoStale()
     })
+
+    // SDSM sensor frames - distinct from 'warning' on purpose (see
+    // decoder.py/alert_formatter.py) - these are detected objects, not an
+    // event, so they never touch the alert stack
+    socket.on('sdsm', (data) => {
+      sdsmFrame.value = data
+      scheduleSdsmStale()
+    })
   })
 
   // cleanup
@@ -137,6 +157,7 @@ export function useMsightSocket() {
     clearTimers.forEach((timer) => clearTimeout(timer))
     clearTimers.clear()
     if (egoStaleTimer) clearTimeout(egoStaleTimer)
+    if (sdsmStaleTimer) clearTimeout(sdsmStaleTimer)
     if (socket) socket.disconnect()
   })
 
@@ -148,5 +169,5 @@ export function useMsightSocket() {
   const lat = computed(() => topAlert.value?.lat ?? null)
   const lon = computed(() => topAlert.value?.lon ?? null)
 
-  return { alerts, isWarning, warningText, lat, lon, connected, frame, egoPosition }
+  return { alerts, isWarning, warningText, lat, lon, connected, frame, egoPosition, sdsmFrame }
 }

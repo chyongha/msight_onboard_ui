@@ -4,8 +4,10 @@ Decodes ICA (Intersection Collision Avoidance) and RSA (RoadSideAlert)
 J2735-style messages arriving over UDP from an MSight roadside unit (RSU),
 and displays a warning banner + a map pin at the alert location — plus a
 live map of tracked vehicles/pedestrians (currently backed by a mock feed,
-see below). Built with Flask + Flask-SocketIO (backend) and Vue 3 + Vite
-(frontend).
+see below) and, when toggled on, a map of SDSM (Sensor Data Sharing
+Message) detected objects — real sensor data from an RSU, not an alert
+(see "SDSM (detected objects)" below). Built with Flask + Flask-SocketIO
+(backend) and Vue 3 + Vite (frontend).
 
 ## Prerequisites
 
@@ -70,7 +72,10 @@ python mock_sender.py
 ```
 For GPS-specific scenarios (a stationary vehicle, a dropped signal, etc.),
 see `mock_sender_gps_tests.py` instead - `python mock_sender_gps_tests.py`
-with no arguments lists them.
+with no arguments lists them. For SDSM scenarios (detected vehicles/
+pedestrians/obstacles), see `mock_sender_sdsm_tests.py` the same way -
+these send real encoded SDSM hex frames (via `backend/codec/SDSMEncoder.py`),
+not a JSON placeholder like the tracking feed.
 
 **Terminal 3 — frontend**
 ```bash
@@ -112,15 +117,16 @@ the real integration, the same one.
 RSU --(UDP, ASCII hex string)--> udp_listener.py --> decoder.py
                                                           |
                                           peeks the ASN.1 CHOICE tag to
-                                          tell ICA from RSA, then calls
-                                          the matching decode function
+                                          tell ICA/RSA/SDSM apart, then
+                                          calls the matching decode function
                                                           |
                                                           v
                                               alert_formatter.py
                                      (decoded dict -> {type, warning,
-                                      text, lat, lon})
+                                      text, lat, lon} for ICA/RSA - SDSM's
+                                      own shape is below, it's not an alert)
                                                           |
-                                          socketio.emit('warning', ...)
+                                          socketio.emit('warning', ...)  # ICA/RSA only
                                                           |
                                                           v
                                     useSocket.js (frontend) -> MapView.vue
@@ -147,7 +153,37 @@ gps_bridge.py --(UDP, JSON: {lat, lon, timestamp})--> udp_listener.py
                                                           |
                                                           v
                                     useSocket.js (frontend) -> MapView.vue
+
+SDSM (detected objects) - same UDP port/hex-over-UDP mechanism as ICA/RSA
+(decoder.py peeks the same ASN.1 tag), but its own socket event so it never
+lands in the alert stack:
+
+RSU --(UDP, ASCII hex string)--> udp_listener.py --> decoder.py --> SDSMDecoder.py
+                                                          |
+                                              alert_formatter.py's format_sdsm()
+                                       (refPos + each object's meters-offset ->
+                                        real lat/lon via geometry.offset_latlon())
+                                                          |
+                                          socketio.emit('sdsm', ...)
+                                                          |
+                                                          v
+                                    useSocket.js (frontend) -> MapView.vue
+                                    (separate marker layer/colors/toggle from
+                                     the tracking overlay above - see below)
 ```
+
+### SDSM (detected objects)
+
+SDSM is real sensor data from an RSU - a reporting station (`refPos`) plus
+whatever vehicles/pedestrians/obstacles it currently sees, each given as a
+meters offset from that station. It is **not an alert** (there's no
+single "subject" the way ICA/RSA have one), so it's deliberately kept off
+the alert stack: its own `'sdsm'` socket event (not `'warning'`), its own
+map marker layer/color palette, and its own "Show SDSM"/"Hide SDSM" toggle
+(off by default, since it's a data layer, not chrome like the GPS box).
+`mock_sender_sdsm_tests.py` sends real encoded SDSM frames (via the real
+`backend/codec/SDSMEncoder.py`/`SDSMDecoder.py`) to exercise this without
+real hardware.
 
 **There is no "all clear" message for alerts.** ICA and RSA are alert-only
 message types — their existence *is* the warning. The RSU just stops
@@ -155,10 +191,11 @@ sending when there's nothing to report, so the frontend clears the banner
 + map pin after ~3s of silence (`useSocket.js`) rather than waiting for an
 explicit `warning: false`.
 
-**The live-tracking feed is currently mocked.** No real encoder/decoder
-exists yet for whatever message type will actually carry continuous
-vehicle/pedestrian positions (presumably SDSM). `mock_sender.py` sends a
-placeholder JSON format instead (see its docstring) on `TRACKING_UDP_PORT`,
+**The live-tracking feed is currently mocked.** SDSM (see above) turned out
+to be its own separate, deliberately non-alert feature rather than this
+feed's real decoder - whether the two should eventually be unified is an
+open question, not yet decided. `mock_sender.py` sends a placeholder JSON
+format instead (see its docstring) on `TRACKING_UDP_PORT`,
 confirmed to use lat/lon directly (not local x/y — no `lanelet2` dependency
 needed here, unlike `msight_original_script/realtime_plot.py`/
 `msight_old_structure`, which do need it). Swapping in a real decoder later
