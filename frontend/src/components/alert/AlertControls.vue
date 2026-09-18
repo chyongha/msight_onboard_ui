@@ -2,17 +2,18 @@
 defineProps({
   viewMode: String, // 'both' | 'map' | 'alerts'
   showGpsBox: Boolean,
-  showSdsm: Boolean,
   soundEnabled: Boolean,
   soundBlockedMessage: String,
 })
-defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sdsm', 'toggle-sound'])
+defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sound'])
 </script>
 
 <template>
   <div class="controls">
     <!-- segmented, not a single cycling button - jump straight to the
-         mode you want instead of clicking through the other two first -->
+         mode you want instead of clicking through the other two first.
+         Also the only control for SDSM's visibility (no separate toggle):
+         Map/Both show it, Alerts-only doesn't render the map at all. -->
     <div class="segmented">
       <button type="button" class="control-btn segment" :class="{ active: viewMode === 'both' }" @click="$emit('set-view-mode', 'both')">Both</button>
       <button type="button" class="control-btn segment" :class="{ active: viewMode === 'map' }" @click="$emit('set-view-mode', 'map')">Map</button>
@@ -20,9 +21,6 @@ defineEmits(['set-view-mode', 'toggle-gps-box', 'toggle-sdsm', 'toggle-sound'])
     </div>
     <button type="button" class="control-btn" :class="{ active: showGpsBox }" @click="$emit('toggle-gps-box')">
       {{ showGpsBox ? 'Hide GPS box' : 'Show GPS box' }}
-    </button>
-    <button type="button" class="control-btn" :class="{ active: showSdsm }" @click="$emit('toggle-sdsm')">
-      {{ showSdsm ? 'Hide SDSM' : 'Show SDSM' }}
     </button>
     <button type="button" class="control-btn" :class="{ active: soundEnabled }" @click="$emit('toggle-sound')">
       {{ soundEnabled ? 'Disable voice alarm' : 'Enable voice alarm' }}

@@ -1,6 +1,6 @@
 """
-sends real, encoded ICA and RSA messages over UDP to test the backend +
-frontend without needing a real RSU
+sends real, encoded ICA, RSA, and SDSM messages over UDP to test the
+backend + frontend without needing a real RSU
 """
 import json
 import socket
@@ -12,23 +12,31 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent / 'backend'))
 
 import config
+from codec import SDSMEncoder as _sdsm_encoder_module
 from codec.ICAEncoder import ica_encoder
 from codec.RSAEncoder import rsa_encoder
+from codec.SDSMEncoder import sdsm_encoder
 from codec.itis_codes import ITIS
 from geometry import offset_latlon
 
+# SDSMEncoder.py prints an "Expect N ... but there are only 0 of it!" line
+# for every genuinely-optional per-object field this mock doesn't supply
+# (accel4way, vehAttitude, ...) - harmless (those fields really are
+# optional, the message still encodes correctly), but at one call/second
+# from sdsm_loop() it drowns out the far rarer ICA/RSA lines. Shadowing
+# `print` in that module's own namespace (not sys.stdout - this file is
+# multi-threaded, and reassigning sys.stdout is process-global, not
+# thread-local, so it would race with and can silently swallow ICA/RSA's
+# own prints from the main thread) silences it without touching the
+# vendored file itself.
+_sdsm_encoder_module.print = lambda *args, **kwargs: None
+
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 TARGET = ('127.0.0.1', config.UDP_PORT)
-TRACKING_TARGET = ('127.0.0.1', config.TRACKING_UDP_PORT)
 EGO_TARGET = ('127.0.0.1', config.EGO_UDP_PORT)
 
-# matches MapView.vue's DEFAULT_CENTER (frontend/src/components/MapView.vue)
-# so mock data actually lands where the map opens by default - previously
-# these were unrelated ("random coordinates"), which meant simulated ego
-# GPS motion was real and correct but hundreds of km off-screen, with
-# nothing to make it visible (no auto-centering on ego updates) - only the
-# coordinates box, which doesn't care where the map is pointed, showed
-# anything was happening at all
+# matches MapView.vue's DEFAULT_CENTER
+# so mock data actually lands where the map opens by default 
 INTERSECTION_LAT = 42.2975
 INTERSECTION_LON = -83.7042
 
@@ -188,41 +196,104 @@ def send_rsa_accidents(msg_cnt: int, scenario_index: int = None):
     send_hex(hex_rsa, f'RSA ({scenario["label"]})')
 
 
-# live tracking 
-def simulate_tracking_objects(t: float):
-    objects = []
+def sdsm_hex(msg_cnt: int, objects: list) -> str:
+    """
+    objects: list of per-object dicts - {id, obj_type, offset_x, offset_y,
+    speed, heading, opt_type, ...} (see simulate_sdsm_objects() below and
+    mock_sender_sdsm_tests.py for the fuller per-category fields). Builds
+    the parallel index-aligned lists sdsm_encoder expects - detVeh/detVRU/
+    detObst-only params are still given one slot per object (unused slots
+    are never read by the encoder since it branches on opt_type first, see
+    SDSMEncoder.py), just to keep every list the same length as objects_N.
+    """
+    n = len(objects)
+    return sdsm_encoder(
+        msgCnt=msg_cnt % 128,
+        sourceID='RSU1',
+        equipmentType='rsu',
+        sDSMTimeStamp_month=9, sDSMTimeStamp_day=17,
+        sDSMTimeStamp_hour=12, sDSMTimeStamp_minute=0, sDSMTimeStamp_second=0.0,
+        refPos_lat=INTERSECTION_LAT, refPos_long=INTERSECTION_LON, refPos_elevation=250.0,
+        refPosXYConf_semiMajor=1.0, refPosXYConf_semiMinor=1.0, refPosXYConf_orientation=0.0,
+        objects_N=n,
+        objects_detObjCommon_objType=[o['obj_type'] for o in objects],
+        objects_detObjCommon_objTypeCfd=[90] * n,
+        objects_detObjCommon_objectID=[o['id'] for o in objects],
+        objects_detObjCommon_measurementTime=[0.0] * n,
+        objects_detObjCommon_timeConfidence=[0.01] * n,
+        objects_detObjCommon_pos_offsetX=[o['offset_x'] for o in objects],
+        objects_detObjCommon_pos_offsetY=[o['offset_y'] for o in objects],
+        objects_detObjCommon_posConfidence_pos=[1.0] * n,
+        objects_detObjCommon_posConfidence_elevation=[1.0] * n,
+        objects_detObjCommon_speed=[o['speed'] for o in objects],
+        objects_detObjCommon_speedConfidence=[95] * n,
+        objects_detObjCommon_heading=[o['heading'] for o in objects],
+        objects_detObjCommon_headingConf=[2.0] * n,
+        objects_detObjOptData_type=[o['opt_type'] for o in objects],
+        objects_detObjOptData_detVeh_size_width=[o.get('size_width', 1.8) for o in objects],
+        objects_detObjOptData_detVeh_size_length=[o.get('size_length', 4.0) for o in objects],
+        objects_detObjOptData_detVeh_lights=[o.get('lights', b'0') for o in objects],
+        objects_detObjOptData_detVeh_vehicleClass=[o.get('vehicle_class', 0) for o in objects],
+        objects_detObjOptData_detVRU_basicType=[o.get('basic_type', 'unavailable') for o in objects],
+        objects_detObjOptData_detVRU_radius=[o.get('vru_radius_cm', 0) for o in objects],
+        objects_detObjOptData_detObst_obstSize_width=[o.get('obst_width', 0.5) for o in objects],
+        objects_detObjOptData_detObst_obstSize_length=[o.get('obst_length', 0.5) for o in objects],
+        # the real ASN.1 schema requires obstSizeConfidence whenever detObst
+        # is used, even though SDSMEncoder.py's own Python-side validation
+        # treats it as optional (only sets it when both lists are given) -
+        # omitting these makes pycrate reject the message at encode time
+        # with "missing mandatory value(s): {'obstSizeConfidence'}"
+        objects_detObjOptData_detObst_obstSizeConfidence_widthConfidence=[0.1] * n,
+        objects_detObjOptData_detObst_obstSizeConfidence_lengthConfidence=[0.1] * n,
+    )
 
-    v1_east = 30.0 - (t * 5.0 % 80.0)
-    v1_lat, v1_lon = offset_latlon(INTERSECTION_LAT, INTERSECTION_LON, v1_east, 5.0)
-    objects.append({
-        'id': 1, 'lat': v1_lat, 'lon': v1_lon, 'category': 'vehicle',
-        'speed': 8.0, 'heading_deg': 270.0, 'length_m': 4.5, 'width_m': 1.8,
-    })
 
-    v2_east, v2_north = -5.0, -20.0 + (t * 4.0 % 60.0)
-    v2_lat, v2_lon = offset_latlon(INTERSECTION_LAT, INTERSECTION_LON, v2_east, v2_north)
-    objects.append({
-        'id': 2, 'lat': v2_lat, 'lon': v2_lon, 'category': 'vehicle',
-        'speed': 6.0, 'heading_deg': 0.0, 'length_m': 4.5, 'width_m': 1.8,
-    })
-
-    p_east = -8.0 + (t * 1.0 % 16.0)
-    p_lat, p_lon = offset_latlon(INTERSECTION_LAT, INTERSECTION_LON, p_east, 0.0)
-    objects.append({
-        'id': 3, 'lat': p_lat, 'lon': p_lon, 'category': 'vru',
-        'speed': 1.2, 'heading_deg': 90.0,
-    })
-
-    return objects
+def send_sdsm(msg_cnt: int, objects: list, label: str):
+    hex_sdsm = sdsm_hex(msg_cnt, objects)
+    send_hex(hex_sdsm, f'SDSM ({label})')
 
 
-def tracking_loop():
+# stands in for a real RSU's SDSM broadcast - 2 vehicles + 1 pedestrian
+# continuously moving near the intersection, offsets directly in SDSM's own
+# meters-from-refPos frame (no lat/lon conversion needed here - that
+# happens once, backend-side, in alert_formatter.py's _sdsm_objects())
+def simulate_sdsm_objects(t: float):
+    return [
+        {
+            'id': 501, 'obj_type': 'vehicle',
+            'offset_x': 30.0 - (t * 5.0 % 80.0), 'offset_y': 5.0,
+            'speed': 8.0, 'heading': 270.0,  # moving west (offset_x decreasing)
+            'opt_type': 'Veh', 'size_width': 1.8, 'size_length': 4.5,
+        },
+        {
+            'id': 502, 'obj_type': 'vehicle',
+            'offset_x': -5.0, 'offset_y': -20.0 + (t * 4.0 % 60.0),
+            'speed': 6.0, 'heading': 0.0,  # moving north (offset_y increasing)
+            'opt_type': 'Veh', 'size_width': 1.8, 'size_length': 4.5,
+        },
+        {
+            'id': 503, 'obj_type': 'vru',
+            'offset_x': -8.0 + (t * 1.0 % 16.0), 'offset_y': 0.0,
+            'speed': 1.2, 'heading': 90.0,  # moving east (offset_x increasing)
+            'opt_type': 'VRU', 'basic_type': 'aPEDESTRIAN', 'vru_radius_cm': 40,
+        },
+    ]
+
+
+def sdsm_loop():
+    # sends via raw sock.sendto rather than send_sdsm()/send_hex() - same
+    # reasoning as ego_loop() below: this is continuous background traffic,
+    # not a discrete named event, so printing every single send (once a
+    # second, forever) would drown out the much rarer ICA/RSA lines in the
+    # terminal without adding anything worth reading
     t = 0.0
+    msg_cnt = 0
     while True:
-        payload = {'objects': simulate_tracking_objects(t), 'timestamp': time.time()}
-        sock.sendto(json.dumps(payload).encode('utf-8'), TRACKING_TARGET)
-        t += 0.2
-        time.sleep(0.2)
+        hex_sdsm = sdsm_hex(msg_cnt, simulate_sdsm_objects(t))
+        sock.sendto(hex_sdsm.encode('ascii'), TARGET)
+        msg_cnt += 1
+        t += 1.0
+        time.sleep(1.0)
 
 
 # stands in for gps_bridge.py (the real ROS2 bridge, see veh_coord_node/) -
@@ -336,8 +407,8 @@ def send_stack_demo():
 
 
 if __name__ == '__main__':
-    threading.Thread(target=tracking_loop, daemon=True).start()
     threading.Thread(target=ego_loop, daemon=True).start()
+    threading.Thread(target=sdsm_loop, daemon=True).start()
     mode = sys.argv[1] if len(sys.argv) > 1 else None
 
     if mode == 'stack-demo':

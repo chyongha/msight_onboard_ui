@@ -1,14 +1,13 @@
 """
 Receive raw bytes, hand them to a decode function, emit the result on a named socket event.
-Three independent listeners run this same loop on different ports — ICA/RSA/SDSM alerts, live
-tracking frames, and this vehicle's own GPS.
+Two independent listeners run this same loop on different ports — ICA/RSA/SDSM (all J2735
+MessageFrame-wrapped, told apart after decoding), and this vehicle's own GPS.
 """
 import json
 import socket
 import threading
 
 from decoder import decode_message
-from tracking_formatter import format_tracking_frame
 
 
 def _listen_loop(socketio, host, port, decode_fn, default_event):
@@ -39,20 +38,6 @@ def start_udp_listener(socketio, host='0.0.0.0', port=4000):
     """
     threading.Thread(
         target=_listen_loop, args=(socketio, host, port, decode_message, 'warning/sdsm'),
-        daemon=True,
-    ).start()
-
-
-def _decode_tracking_frame(raw_bytes: bytes) -> tuple[str, dict]:
-    # Not the real encoding a real-time tracking would use - replace with real decoder later
-    raw = json.loads(raw_bytes.decode('utf-8'))
-    return 'frame', format_tracking_frame(raw)
-
-
-def start_tracking_listener(socketio, host='0.0.0.0', port=4001):
-    """Live object tracking (mocked) -> 'frame' events."""
-    threading.Thread(
-        target=_listen_loop, args=(socketio, host, port, _decode_tracking_frame, 'frame'),
         daemon=True,
     ).start()
 

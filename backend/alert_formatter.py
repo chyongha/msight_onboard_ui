@@ -375,7 +375,6 @@ def _rsa_heading_slices(heading) -> list | None:
     `heading` HeadingSlice bitmask) - NOT a single object's direction of
     travel, that's `subject`'s heading_deg. This is "relevant to traffic
     heading these ways" (can be several, non-adjacent slices at once).
-    None when `heading` wasn't set or is zero (nothing to show).
     """
     if not isinstance(heading, int) or heading == 0:
         return None
@@ -502,14 +501,11 @@ def _sdsm_object_size_m(category: str, opt_data) -> str | None:
 def _sdsm_objects(sdsm: dict, ref_lat: float | None, ref_lon: float | None) -> list:
     """
     Turns SDSM's `objects` (each given as a meters offset from refPos, see
-    SDSMDecoder.py) into the exact same per-object shape
-    tracking_formatter.format_tracking_frame() already produces
-    (`{id, lat, lon, category, speed, heading_deg}`), plus `size_m` and
-    `detail` strings - so the frontend can reuse its existing tracking-
-    object marker rendering for SDSM too, just on a separate layer/toggle.
-    Objects still render as fixed-size icons on the map regardless of
-    `size_m` (not scaled to it) - it's informational text only, shown in
-    the tooltip/SdsmInfoBox.
+    SDSMDecoder.py) into `{id, lat, lon, category, speed, heading_deg,
+    size_m, detail}` per object, for MapView.vue's marker rendering.
+    Objects render as fixed-size icons on the map regardless of `size_m`
+    (not scaled to it) - it's informational text only, shown in the
+    tooltip/SdsmInfoBox.
     """
     if ref_lat is None or ref_lon is None:
         return []  # nothing to offset the objects from

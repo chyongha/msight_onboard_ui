@@ -1,5 +1,5 @@
 <script setup>
-// two independent layers - alert / tracking pin 
+// independent layers: alert pin, ego "You" marker, SDSM (reporting station + detected objects)
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -13,11 +13,9 @@ const props = defineProps({
   lat: { type: Number, default: null }, // alert latitude
   lon: { type: Number, default: null }, // alert longitude
   warningText: { type: String, default: '' }, // shown in the alert pin's tooltip
-  frame: { type: Object, default: null }, // live tracking
   egoPosition: { type: Object, default: null }, // this vehicle's own live GPS fix - { lat, lon, timestamp } or null
   showGpsBox: { type: Boolean, default: true }, // independent of whether the map itself is showing
-  sdsmFrame: { type: Object, default: null }, // latest SDSM sensor frame - { source_id, equipment_type, lat, lon, objects[] } or null
-  showSdsm: { type: Boolean, default: false }, // SDSM is a data layer, not chrome - off until asked for, unlike showGpsBox
+  sdsmFrame: { type: Object, default: null }, // latest SDSM sensor frame - { source_id, equipment_type, lat, lon, objects[] } or null - shown whenever present, no separate toggle (App.vue's view mode controls whether the map itself renders at all)
 })
 
 
@@ -26,13 +24,10 @@ const DEFAULT_CENTER = [
   Number(import.meta.env.VITE_DEFAULT_LON) || -83.7042,
 ]
 
-const CATEGORY_COLOR = { vehicle: '#3388ff', vru: '#22aa44' } // blue for vehicles, green for pedestrians
 const ALERT_STROKE_COLOR = '#cc0000'
 const ALERT_FILL_COLOR = '#f52323'
-const EGO_COLOR = '#7c5cf0' // weather-purple (--color-cat-weather) - distinct from the alert pin (red) and tracked-object markers (blue/green), since this one means "you"
-// SDSM is real detected-object data from a roadside sensor, kept visually
-// distinct from the (still mocked) tracking overlay's blue/green - also has
-// two categories tracking doesn't (obstacle/animal)
+const EGO_COLOR = '#7c5cf0' // weather-purple (--color-cat-weather) - distinct from the alert pin (red) and SDSM's markers, since this one means "you"
+// SDSM is real detected-object data from a roadside sensor
 const SDSM_CATEGORY_COLOR = { vehicle: '#ff9f1c', vru: '#00b4d8', obstacle: '#6c757d', animal: '#8ac926' }
 // the reporting station (refPos) itself - a muted grey rather than a bold
 // color like the categories above, since it's just a fixed reference point
@@ -40,29 +35,23 @@ const SDSM_CATEGORY_COLOR = { vehicle: '#ff9f1c', vru: '#00b4d8', obstacle: '#6c
 // way a detected object does
 const SDSM_STATION_COLOR = '#9aa0a6'
 
-// two separate legend boxes rather than one combined list (see MapView's
-// template) - the base one (alert/tracking/ego) always shows, the SDSM one
-// only appears, stacked above it, while that layer is toggled on
-const baseLegendItems = [
+// single legend box - identity markers (alert/you) first, then SDSM's
+// detected-object categories
+const legendItems = [
   { color: ALERT_FILL_COLOR, label: 'Alert location' },
-  { color: CATEGORY_COLOR.vehicle, label: 'Tracked vehicle' },
-  { color: CATEGORY_COLOR.vru, label: 'Tracked pedestrian' },
   { color: EGO_COLOR, label: 'You (GPS)' },
-]
-const sdsmLegendItems = [
-  { color: SDSM_STATION_COLOR, label: 'Reporting station' },
-  { color: SDSM_CATEGORY_COLOR.vehicle, label: 'Vehicle' },
-  { color: SDSM_CATEGORY_COLOR.vru, label: 'Pedestrian' },
-  { color: SDSM_CATEGORY_COLOR.obstacle, label: 'Obstacle' },
-  { color: SDSM_CATEGORY_COLOR.animal, label: 'Animal' },
+  { color: SDSM_STATION_COLOR, label: 'SDSM reporting station' },
+  { color: SDSM_CATEGORY_COLOR.vehicle, label: 'SDSM vehicle' },
+  { color: SDSM_CATEGORY_COLOR.vru, label: 'SDSM pedestrian' },
+  { color: SDSM_CATEGORY_COLOR.obstacle, label: 'SDSM obstacle' },
+  { color: SDSM_CATEGORY_COLOR.animal, label: 'SDSM animal' },
 ]
 
 const mapContainer = ref(null) // this is how Leaflet gets a real DOM element to attach to
 let map = null // leaflet map instance
 let alertMarker = null // single red circle marking the most recent alert's location
 let hasCenteredOnAlert = false // true after the map has auto-centered on an alert once — prevents re-centering (and fighting your manual panning) on every later alert
-const objectMarkers = {} // live tracking object marker
-const sdsmObjectMarkers = {} // SDSM detected-object markers - separate layer/store so it can be toggled independently of tracking
+const sdsmObjectMarkers = {} // SDSM detected-object markers
 let sdsmStationMarker = null // the SDSM reporting station itself (refPos) - a fixed sensor location, not a detected object
 let egoMarker = null // this vehicle's own position
 let hasCenteredOnEgo = false // same one-time-only pattern as hasCenteredOnAlert - without this, a GPS location far from DEFAULT_CENTER (e.g. testing at a different site, or a mock/default mismatch) would move the marker somewhere off-screen with nothing to make it visible
@@ -107,20 +96,17 @@ function updateAlertMarker() {
   }
 }
 
-// shared by both the (mocked) tracking overlay and the SDSM overlay - both
-// produce objects in this exact shape ({id, lat, lon, category, speed,
-// heading_deg}, SDSM adds optional `size_m`/`detail`), just from different
-// sources/ports, kept on separate marker stores so either layer can be
-// toggled independently. Objects render with the same fixed-size icon as
-// the ego marker (see buildMarkerIcon()) rather than a true-to-scale
-// shape - heading is always known directly here (unlike ego, which has to
-// derive it from consecutive fixes), so the arrow is shown immediately.
-function syncObjectMarkers(objects, markerStore, colorMap) {
+// SDSM's detected objects ({id, lat, lon, category, speed, heading_deg,
+// size_m, detail}). Objects render with the same fixed-size icon as the
+// ego marker (see buildMarkerIcon()) rather than a true-to-scale shape -
+// heading is always known directly here (unlike ego, which has to derive
+// it from consecutive fixes), so the arrow is shown immediately.
+function syncSdsmObjectMarkers(objects) {
   const seen = new Set()  // tracks which object ids are present in THIS frame, so stale markers can be removed below
 
   objects.forEach((obj) => {
     seen.add(obj.id)
-    const color = colorMap[obj.category] || '#888888'  // grey fallback for any unrecognized category
+    const color = SDSM_CATEGORY_COLOR[obj.category] || '#888888'  // grey fallback for any unrecognized category
     const tip = `ID ${obj.id} &bull; ${obj.category}<br>` +
       `speed ${obj.speed.toFixed(1)} m/s<br>` +
       `heading ${obj.heading_deg.toFixed(1)}&deg;` +
@@ -128,7 +114,7 @@ function syncObjectMarkers(objects, markerStore, colorMap) {
       (obj.detail ? `<br>${obj.detail}` : '')
     const latlng = [obj.lat, obj.lon]
 
-    let marker = markerStore[obj.id]
+    let marker = sdsmObjectMarkers[obj.id]
     if (marker) {
       marker.setLatLng(latlng)
       marker.setTooltipContent(tip)
@@ -136,24 +122,19 @@ function syncObjectMarkers(objects, markerStore, colorMap) {
       marker = L.marker(latlng, { icon: buildMarkerIcon(color) })
         .bindTooltip(tip, { permanent: false })
         .addTo(map)
-      markerStore[obj.id] = marker
+      sdsmObjectMarkers[obj.id] = marker
     }
 
     setMarkerHeading(marker, obj.heading_deg)
   })
 
   // anything not in this frame gets removed
-  Object.keys(markerStore).forEach((id) => {
+  Object.keys(sdsmObjectMarkers).forEach((id) => {
     if (!seen.has(Number(id))) {
-      map.removeLayer(markerStore[id])
-      delete markerStore[id]
+      map.removeLayer(sdsmObjectMarkers[id])
+      delete sdsmObjectMarkers[id]
     }
   })
-}
-
-function updateObjectMarkers() {
-  if (!map || !props.frame) return  // map isn't built yet, or no tracking data has ever arrived
-  syncObjectMarkers(props.frame.objects || [], objectMarkers, CATEGORY_COLOR)
 }
 
 // a small diamond (rotated square), deliberately NOT the circle+arrow
@@ -176,7 +157,7 @@ function buildStationIcon() {
 }
 
 function updateSdsmStationMarker() {
-  const hasFix = props.showSdsm && props.sdsmFrame
+  const hasFix = props.sdsmFrame
     && typeof props.sdsmFrame.lat === 'number' && typeof props.sdsmFrame.lon === 'number'
 
   if (!hasFix) {
@@ -203,10 +184,10 @@ function updateSdsmStationMarker() {
 function updateSdsmMarkers() {
   if (!map) return
 
-  if (!props.showSdsm || !props.sdsmFrame) {
-    // layer toggled off, or no frame (yet, or gone stale) - clear
-    // everything rather than leaving stale markers on screen, same fix as
-    // the ego marker's staleness handling
+  if (!props.sdsmFrame) {
+    // no frame yet, or it's gone stale - clear everything rather than
+    // leaving stale markers on screen, same fix as the ego marker's
+    // staleness handling
     Object.keys(sdsmObjectMarkers).forEach((id) => {
       map.removeLayer(sdsmObjectMarkers[id])
       delete sdsmObjectMarkers[id]
@@ -215,17 +196,17 @@ function updateSdsmMarkers() {
     return
   }
 
-  syncObjectMarkers(props.sdsmFrame.objects || [], sdsmObjectMarkers, SDSM_CATEGORY_COLOR)
+  syncSdsmObjectMarkers(props.sdsmFrame.objects || [])
   updateSdsmStationMarker()
 }
 
 // circle (always) + a small triangular arrow (hidden via opacity until a
 // real heading is known) - one icon shape/size for EVERY marker on this map
-// (ego, tracked objects, SDSM objects), just a different fill color per
-// category/purpose, so they read as one consistent visual language instead
-// of ego being a crisp icon while tracked/SDSM objects were tiny
-// real-world-scaled dots/boxes at typical zoom. The arrow is toggled/
-// rotated in place rather than swapping icons, see setMarkerHeading().
+// (ego, SDSM objects), just a different fill color per category/purpose, so
+// they read as one consistent visual language instead of ego being a crisp
+// icon while SDSM objects were tiny real-world-scaled dots/boxes at typical
+// zoom. The arrow is toggled/rotated in place rather than swapping icons,
+// see setMarkerHeading().
 function buildMarkerIcon(color) {
   // bigger than the first version (26->36px), and the arrow redrawn to sit
   // mostly ABOVE the circle (tip near the very top of the icon, base just
@@ -251,8 +232,8 @@ function buildMarkerIcon(color) {
 
 // rotates a marker built by buildMarkerIcon() to headingDeg and reveals its
 // arrow (opacity 0 -> 1) - shared by the ego marker (heading derived from
-// consecutive fixes, so this is only called once one's known) and tracked/
-// SDSM object markers (heading arrives directly in every frame, so this is
+// consecutive fixes, so this is only called once one's known) and SDSM
+// object markers (heading arrives directly in every frame, so this is
 // called immediately on every update)
 function setMarkerHeading(marker, headingDeg) {
   const el = marker.getElement()
@@ -325,7 +306,6 @@ onMounted(() => {
   ).addTo(map)
 
   updateAlertMarker()
-  updateObjectMarkers()
   updateEgoMarker()
   updateSdsmMarkers()
 })
@@ -338,19 +318,15 @@ onBeforeUnmount(() => {
 })
 
 watch(() => [props.isWarning, props.lat, props.lon, props.warningText], updateAlertMarker)
-watch(() => props.frame, updateObjectMarkers)
 watch(() => props.egoPosition, updateEgoMarker)
-watch(() => [props.sdsmFrame, props.showSdsm], updateSdsmMarkers)
+watch(() => props.sdsmFrame, updateSdsmMarkers)
 </script>
 
 <template>
   <div ref="mapContainer" class="map"></div>
   <EgoCoordinatesBox v-if="showGpsBox" :ego-position="egoPosition" />
-  <SdsmInfoBox v-if="showSdsm" :sdsm-frame="sdsmFrame" :category-color="SDSM_CATEGORY_COLOR" />
-  <div class="legend-stack">
-    <MapLegend v-if="showSdsm" title="SDSM" :items="sdsmLegendItems" />
-    <MapLegend :items="baseLegendItems" />
-  </div>
+  <SdsmInfoBox :sdsm-frame="sdsmFrame" :category-color="SDSM_CATEGORY_COLOR" />
+  <MapLegend :items="legendItems" />
 </template>
 
 <style scoped>
@@ -358,19 +334,5 @@ watch(() => [props.sdsmFrame, props.showSdsm], updateSdsmMarkers)
   position: absolute;
   inset: 0;
   z-index: 0;
-}
-/* anchored at the bottom-right corner, growing upward as boxes are added -
-   the SDSM legend (first in DOM) ends up stacked above the always-present
-   base legend (last in DOM) without either needing to know the other's
-   height */
-.legend-stack {
-  position: absolute;
-  bottom: var(--space-3);
-  right: var(--space-3);
-  z-index: 1000;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: var(--space-2);
 }
 </style>

@@ -7,7 +7,12 @@ Unlike the mocked tracking feed, SDSM already has a real encoder
 (backend/codec/SDSMEncoder.py) - this sends actual encoded hex frames to
 the same UDP port ICA/RSA use (config.UDP_PORT), since that's how the real
 dispatch works (one hex-over-UDP channel, told apart by the ASN.1 message
-tag - see backend/decoder.py).
+tag - see backend/decoder.py). The encoding itself (sdsm_hex()) and a
+default continuously-moving scene (simulate_sdsm_objects()) live in
+mock_sender.py now, since `python mock_sender.py` on its own also sends a
+live SDSM feed alongside ICA/RSA/ego - this file is just for the extra
+named scenarios (a static/rich vehicle, an obstacle, staleness checks)
+that script doesn't cover.
 
 Run one scenario at a time:
     python mock_sender_sdsm_tests.py detected-scene
@@ -23,63 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / 'backend'))
 
-from mock_sender import INTERSECTION_LAT, INTERSECTION_LON, send_hex
-from codec.SDSMEncoder import sdsm_encoder
-
-
-def _sdsm_hex(msg_cnt: int, objects: list) -> str:
-    """
-    objects: list of per-object dicts (see scenarios below). Builds the
-    parallel index-aligned lists sdsm_encoder expects - detVeh/detVRU/
-    detObst-only params are still given one slot per object (unused slots
-    are never read by the encoder since it branches on opt_type first, see
-    SDSMEncoder.py), just to keep every list the same length as objects_N.
-    """
-    n = len(objects)
-    return sdsm_encoder(
-        msgCnt=msg_cnt % 128,
-        sourceID='RSU1',
-        equipmentType='rsu',
-        sDSMTimeStamp_month=9, sDSMTimeStamp_day=17,
-        sDSMTimeStamp_hour=12, sDSMTimeStamp_minute=0, sDSMTimeStamp_second=0.0,
-        refPos_lat=INTERSECTION_LAT, refPos_long=INTERSECTION_LON, refPos_elevation=250.0,
-        refPosXYConf_semiMajor=1.0, refPosXYConf_semiMinor=1.0, refPosXYConf_orientation=0.0,
-        objects_N=n,
-        objects_detObjCommon_objType=[o['obj_type'] for o in objects],
-        objects_detObjCommon_objTypeCfd=[90] * n,
-        objects_detObjCommon_objectID=[o['id'] for o in objects],
-        objects_detObjCommon_measurementTime=[0.0] * n,
-        objects_detObjCommon_timeConfidence=[0.01] * n,
-        objects_detObjCommon_pos_offsetX=[o['offset_x'] for o in objects],
-        objects_detObjCommon_pos_offsetY=[o['offset_y'] for o in objects],
-        objects_detObjCommon_posConfidence_pos=[1.0] * n,
-        objects_detObjCommon_posConfidence_elevation=[1.0] * n,
-        objects_detObjCommon_speed=[o['speed'] for o in objects],
-        objects_detObjCommon_speedConfidence=[95] * n,
-        objects_detObjCommon_heading=[o['heading'] for o in objects],
-        objects_detObjCommon_headingConf=[2.0] * n,
-        objects_detObjOptData_type=[o['opt_type'] for o in objects],
-        objects_detObjOptData_detVeh_size_width=[o.get('size_width', 1.8) for o in objects],
-        objects_detObjOptData_detVeh_size_length=[o.get('size_length', 4.0) for o in objects],
-        objects_detObjOptData_detVeh_lights=[o.get('lights', b'0') for o in objects],
-        objects_detObjOptData_detVeh_vehicleClass=[o.get('vehicle_class', 0) for o in objects],
-        objects_detObjOptData_detVRU_basicType=[o.get('basic_type', 'unavailable') for o in objects],
-        objects_detObjOptData_detVRU_radius=[o.get('vru_radius_cm', 0) for o in objects],
-        objects_detObjOptData_detObst_obstSize_width=[o.get('obst_width', 0.5) for o in objects],
-        objects_detObjOptData_detObst_obstSize_length=[o.get('obst_length', 0.5) for o in objects],
-        # the real ASN.1 schema requires obstSizeConfidence whenever detObst
-        # is used, even though SDSMEncoder.py's own Python-side validation
-        # treats it as optional (only sets it when both lists are given) -
-        # omitting these makes pycrate reject the message at encode time
-        # with "missing mandatory value(s): {'obstSizeConfidence'}"
-        objects_detObjOptData_detObst_obstSizeConfidence_widthConfidence=[0.1] * n,
-        objects_detObjOptData_detObst_obstSizeConfidence_lengthConfidence=[0.1] * n,
-    )
-
-
-def _send_sdsm(msg_cnt: int, objects: list, label: str):
-    hex_sdsm = _sdsm_hex(msg_cnt, objects)
-    send_hex(hex_sdsm, f'SDSM ({label})')
+from mock_sender import send_sdsm as _send_sdsm, simulate_sdsm_objects
 
 
 def detected_scene(duration_s: float = 30.0):
@@ -88,7 +37,7 @@ def detected_scene(duration_s: float = 30.0):
     pedestrian, looping - the main "does this render, on its own layer,
     with its own colors, not in the alert stack" check.
     """
-    print(f'=== detected-scene: RSU sees 2 vehicles + 1 pedestrian for {duration_s:.0f}s - toggle "Show SDSM" on ===')
+    print(f'=== detected-scene: RSU sees 2 vehicles + 1 pedestrian for {duration_s:.0f}s ===')
     objects = [
         {
             'id': 101, 'obj_type': 'vehicle', 'offset_x': 20.0, 'offset_y': 10.0,
@@ -158,49 +107,24 @@ def obstacle(duration_s: float = 20.0):
     print('=== done ===')
 
 
-def _moving_objects(t: float) -> list:
-    """
-    Same back-and-forth motion idea as mock_sender.py's
-    simulate_tracking_objects(t), but directly in SDSM's own offset-from-
-    refPos meters - no lat/lon conversion needed, unlike tracking.
-    """
-    return [
-        {
-            'id': 501, 'obj_type': 'vehicle',
-            'offset_x': 30.0 - (t * 5.0 % 80.0), 'offset_y': 5.0,
-            'speed': 8.0, 'heading': 270.0,  # moving west (offset_x decreasing)
-            'opt_type': 'Veh', 'size_width': 1.8, 'size_length': 4.5,
-        },
-        {
-            'id': 502, 'obj_type': 'vehicle',
-            'offset_x': -5.0, 'offset_y': -20.0 + (t * 4.0 % 60.0),
-            'speed': 6.0, 'heading': 0.0,  # moving north (offset_y increasing)
-            'opt_type': 'Veh', 'size_width': 1.8, 'size_length': 4.5,
-        },
-        {
-            'id': 503, 'obj_type': 'vru',
-            'offset_x': -8.0 + (t * 1.0 % 16.0), 'offset_y': 0.0,
-            'speed': 1.2, 'heading': 90.0,  # moving east (offset_x increasing)
-            'opt_type': 'VRU', 'basic_type': 'aPEDESTRIAN', 'vru_radius_cm': 40,
-        },
-    ]
-
-
 def moving():
     """
     Continuous frames - one message per second, indefinitely (Ctrl+C to
     stop), with objects actually moving frame to frame (unlike
     detected-scene/single-vehicle/obstacle above, which repeat the same
     fixed positions) - same "leave it running and watch" idiom as
-    mock_sender.py's tracking_loop()/ego_loop(). Confirms markers update
+    mock_sender.py's ego_loop()/sdsm_loop(). Confirms markers update
     smoothly in place (not flicker/recreate) as real positions change.
+    This is the same scene mock_sender.py's own sdsm_loop() sends by
+    default - useful to run standalone when you want SDSM moving without
+    ICA/RSA/ego also running.
     """
     print('=== moving: 3 objects continuously moving, one SDSM frame/second - Ctrl+C to stop ===')
     msg_cnt = 0
     t = 0.0
     try:
         while True:
-            _send_sdsm(msg_cnt, _moving_objects(t), 'moving scene')
+            _send_sdsm(msg_cnt, simulate_sdsm_objects(t), 'moving scene')
             msg_cnt += 1
             t += 1.0
             time.sleep(1.0)
@@ -212,7 +136,7 @@ def moving():
 def no_signal():
     """Sends nothing - confirms SdsmInfoBox's "No SDSM data yet" state and that no stray markers appear."""
     print('=== no-signal: sending nothing - check the UI shows "No SDSM data yet" and no markers ===')
-    print('(nothing to do - just open the app, toggle "Show SDSM" on, and look; Ctrl+C when done checking)')
+    print('(nothing to do - just open the app in Both/Map view and look; Ctrl+C when done checking)')
     try:
         while True:
             time.sleep(1)

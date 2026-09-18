@@ -47,12 +47,10 @@ function alertFields(data) {
   }
 }
 
-// single socketio connection controls both warning nad tracking
+// single socketio connection carries alerts, ego GPS, and SDSM
 export function useMsightSocket() {
   const alerts = ref([])  // newest/top of stack first
   const connected = ref(false)
-  // latest live tracking frame
-  const frame = ref(null)
   // this vehicle's own latest GPS fix - { lat, lon, timestamp } or null before the first one arrives
   const egoPosition = ref(null)
   // latest SDSM sensor frame - { source_id, equipment_type, lat, lon, timestamp, occurred_at, objects[] } or null
@@ -130,11 +128,6 @@ export function useMsightSocket() {
       if (data.warning) upsertAlert(data)
     })
 
-    // tracking - new frame replaces the most recent frame
-    socket.on('frame', (data) => {
-      frame.value = data
-    })
-
     // this vehicle's own GPS - new fix replaces the previous one, and
     // restarts the staleness timer so it doesn't just freeze if the feed
     // goes quiet (see EGO_STALE_AFTER_MS above)
@@ -169,5 +162,5 @@ export function useMsightSocket() {
   const lat = computed(() => topAlert.value?.lat ?? null)
   const lon = computed(() => topAlert.value?.lon ?? null)
 
-  return { alerts, isWarning, warningText, lat, lon, connected, frame, egoPosition, sdsmFrame }
+  return { alerts, isWarning, warningText, lat, lon, connected, egoPosition, sdsmFrame }
 }
