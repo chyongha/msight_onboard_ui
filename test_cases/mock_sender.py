@@ -3,13 +3,14 @@ sends real, encoded ICA, RSA, and SDSM messages over UDP to test the
 backend + frontend without needing a real RSU
 """
 import json
+import os
 import socket
 import sys
 import threading
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent / 'backend'))
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / 'backend'))
 
 import config
 from codec import SDSMEncoder as _sdsm_encoder_module
@@ -19,21 +20,15 @@ from codec.SDSMEncoder import sdsm_encoder
 from codec.itis_codes import ITIS
 from geometry import offset_latlon
 
-# SDSMEncoder.py prints an "Expect N ... but there are only 0 of it!" line
-# for every genuinely-optional per-object field this mock doesn't supply
-# (accel4way, vehAttitude, ...) - harmless (those fields really are
-# optional, the message still encodes correctly), but at one call/second
-# from sdsm_loop() it drowns out the far rarer ICA/RSA lines. Shadowing
-# `print` in that module's own namespace (not sys.stdout - this file is
-# multi-threaded, and reassigning sys.stdout is process-global, not
-# thread-local, so it would race with and can silently swallow ICA/RSA's
-# own prints from the main thread) silences it without touching the
-# vendored file itself.
 _sdsm_encoder_module.print = lambda *args, **kwargs: None
 
 sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-TARGET = ('127.0.0.1', config.UDP_PORT)
-EGO_TARGET = ('127.0.0.1', config.EGO_UDP_PORT)
+MOCK_HOST = os.environ.get('MOCK_TARGET_HOST', '127.0.0.1')  # where the backend runs
+ICA_TARGET = (MOCK_HOST, config.UDP_ICA_PORT)
+RSA_TARGET = (MOCK_HOST, config.UDP_RSA_PORT)
+SDSM_TARGET = (MOCK_HOST, config.UDP_SDSM_PORT)
+TARGET = ICA_TARGET  # legacy name, still imported by mock_sender_test_cases.py
+EGO_TARGET = (MOCK_HOST, config.EGO_UDP_PORT)
 
 # matches MapView.vue's DEFAULT_CENTER
 # so mock data actually lands where the map opens by default 
@@ -41,8 +36,8 @@ INTERSECTION_LAT = 42.2975
 INTERSECTION_LON = -83.7042
 
 
-def send_hex(hex_str: str, label: str):
-    sock.sendto(hex_str.encode('ascii'), TARGET)
+def send_hex(hex_str: str, label: str, target=None):
+    sock.sendto(hex_str.encode('ascii'), target or ICA_TARGET)
     print(f'  sent {label} ({len(hex_str)} hex chars)')
 
 
@@ -124,7 +119,7 @@ def send_ica_accidents(msg_cnt: int, scenario_index: int = None):
         intersectionID_id=1, laneNumber_type='approach', laneNumber_value=1,
         eventFlag_value=scenario['eventFlag_value'],
     )
-    send_hex(hex_ica, f'ICA ({scenario["label"]})')
+    send_hex(hex_ica, f'ICA ({scenario["label"]})', ICA_TARGET)
 
 
 _RSA_SCENARIOS = [
@@ -193,7 +188,7 @@ def send_rsa_accidents(msg_cnt: int, scenario_index: int = None):
         extent=scenario.get('extent'),  # omitted entirely (not defaulted) when a scenario doesn't set one
         heading=scenario.get('heading'),  # HeadingSlice bitmask - also omitted when unset
     )
-    send_hex(hex_rsa, f'RSA ({scenario["label"]})')
+    send_hex(hex_rsa, f'RSA ({scenario["label"]})', RSA_TARGET)
 
 
 def sdsm_hex(msg_cnt: int, objects: list) -> str:
@@ -250,7 +245,7 @@ def sdsm_hex(msg_cnt: int, objects: list) -> str:
 
 def send_sdsm(msg_cnt: int, objects: list, label: str):
     hex_sdsm = sdsm_hex(msg_cnt, objects)
-    send_hex(hex_sdsm, f'SDSM ({label})')
+    send_hex(hex_sdsm, f'SDSM ({label})', SDSM_TARGET)
 
 
 # stands in for a real RSU's SDSM broadcast - 2 vehicles + 1 pedestrian
@@ -290,7 +285,7 @@ def sdsm_loop():
     msg_cnt = 0
     while True:
         hex_sdsm = sdsm_hex(msg_cnt, simulate_sdsm_objects(t))
-        sock.sendto(hex_sdsm.encode('ascii'), TARGET)
+        sock.sendto(hex_sdsm.encode('ascii'), SDSM_TARGET)
         msg_cnt += 1
         t += 1.0
         time.sleep(1.0)

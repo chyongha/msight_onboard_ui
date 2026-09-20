@@ -1,25 +1,5 @@
 """
-Turns a decoded ICA/RSA dict for the frontend 
-    {type, warning, text, headline, events, lat, lon, timestamp, occurred_at, 
-    severity, category, subject, extent, direction_slices, trajectory}
-
-text: flattened one-line summary 
-headline: the single key primary event. Only RSA typeevent 
-events: the card's bulleted/chipped list. For ICA this is every active
-    eventFlag condition. For RSA this is description 
-subject: info about who/what triggered the alert - speed/heading, any active
-    brake/traction/stability flags, for ICA it is partOne data: gear,
-    steering angle, forward accel, and vehicle size. 
-extent: RSA only - how far past the alert is significant 
-timestamp: epoch seconds when the backend relayed the message 
-occurred_at: epoch seconds for "when the event actually happened," shown
-    in the header instead of a live "Xs ago"
-direction_slices: RSA only for which ~22.5deg compass slices this alert applies to
-trajectory: recent path of the offending vehicle, decoded from ICA's
-    path.crumbData breadcrumbs
-
-Since SDSM is a sensor frame (a reporting station + a list of currently-detected objects), it is not an alert 
-and gets its own minimal shape.
+Alert formatting for the frontend
 """
 import re
 import time
@@ -31,17 +11,14 @@ from geometry import offset_latlon
 # ITIS code of the event : name of the event
 _ITIS_NAME_BY_CODE = {code: name for name, code in ITIS.items()}
 
-# same 16-point compass rose alertVisuals.js's compassLabel() uses -
-# duplicated here (Python side) rather than shared, since it can't cross
-# the language boundary. Bit i of RSA's HeadingSlice = compass point i,
-# verified directly against the real ASN.1 schema (v2xlib.py): bit 0 =
-# 0-22.5deg, bit 1 = 22.5-45deg, ... bit 15 = 337.5-360deg
+# alertVisuals.js compassLabel() 
+# bit 0 = 0-22.5deg, bit 1 = 22.5-45deg, ... bit 15 = 337.5-360deg
 _COMPASS_16 = [
     'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
     'S', 'SSW', 'SW', 'WSW', 'W', 'WNW', 'NW', 'NNW',
 ]
 
-# ICA eventFlag bits - bit6 is skipped since it is reserved for future use 
+# ICA eventFlag bits - skip bit 6
 _ICA_EVENT_BITS = {
     0: 'hazard lights on',
     1: 'stop line violation',
@@ -69,7 +46,7 @@ _RSA_CATEGORY_KEYWORDS = (
     ('weather', ('rain', 'fog', 'ice', 'snow', 'pavement', 'flooding')),
 )
 
-# ITIS name substrings that always mean "critical" regardless of priority
+# ITIS name substrings that always mean critical regardless of the priority
 _RSA_CRITICAL_KEYWORDS = ('accident', 'fire', 'chase', 'medical-emergency', 'jack-knife')
 
 
@@ -354,7 +331,7 @@ _RSA_EXTENT_LABELS = {
 def _rsa_extent_label(extent) -> str | None:
     """
     Edit RSA's `extent` enum into how far past the hazard this stays
-    relevan" banner text.
+    relevant banner text.
     """
     if not isinstance(extent, str):
         return None
@@ -503,9 +480,6 @@ def _sdsm_objects(sdsm: dict, ref_lat: float | None, ref_lon: float | None) -> l
     Turns SDSM's `objects` (each given as a meters offset from refPos, see
     SDSMDecoder.py) into `{id, lat, lon, category, speed, heading_deg,
     size_m, detail}` per object, for MapView.vue's marker rendering.
-    Objects render as fixed-size icons on the map regardless of `size_m`
-    (not scaled to it) - it's informational text only, shown in the
-    tooltip/SdsmInfoBox.
     """
     if ref_lat is None or ref_lon is None:
         return []  # nothing to offset the objects from

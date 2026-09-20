@@ -1,7 +1,5 @@
 """
 Bridges vehicle gps information with msight ui
-
-BACKEND_HOST=192.168.1.50 EGO_UDP_PORT=4002 python3 gps_bridge.py
 """
 import json
 import os
@@ -12,7 +10,7 @@ from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix
 
 BACKEND_HOST = os.environ.get('BACKEND_HOST', '127.0.0.1')
-EGO_UDP_PORT = int(os.environ.get('EGO_UDP_PORT', '4002'))
+EGO_UDP_PORT = int(os.environ.get('EGO_UDP_PORT', '4003'))
 
 
 class GpsBridge:

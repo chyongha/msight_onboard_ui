@@ -28,14 +28,28 @@ def _peek_message_type(hex_str: str) -> str:
     return frame()['value'][0]
 
 
+def _to_hex_str(raw_bytes: bytes) -> str:
+    """
+    RSU - raw binary UPER bytes
+    mock_sender.py - ASCII hex string. 
+    if the payload is entirely hex characters treat it as the mock's text form, otherwise hex-encode it
+    """
+    try:
+        text = raw_bytes.decode('ascii').strip()
+        int(text, 16)
+        return text
+    except (UnicodeDecodeError, ValueError):
+        return raw_bytes.hex()
+
+
 def decode_message(raw_bytes: bytes) -> tuple[str, dict]:
     """
     Perform decoding using the alert_formatter functions.
-    Returns (socket_event_name, formatted_dict).
+    returns event name, socket dictionary
     """
-    hex_str = raw_bytes.decode('ascii').strip()
+    hex_str = _to_hex_str(raw_bytes)
 
-    # check message type - ICA, RSA, or SDSM
+    # check message type 
     msg_type = _peek_message_type(hex_str)
     if msg_type not in _DISPATCH:
         raise ValueError(f'Unrecognized message type: {msg_type!r}')

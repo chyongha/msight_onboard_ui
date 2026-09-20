@@ -29,8 +29,8 @@ currently sees), not an alert, shown as a live map overlay instead (see
 |---|---|---|
 | `BACKEND_HOST` | `127.0.0.1` | Interface the Flask/Socket.IO server binds to. Use `0.0.0.0` if the frontend runs on a different device than the backend. |
 | `BACKEND_PORT` | `5000` | Port for the Flask/Socket.IO server. |
-| `UDP_PORT` | `4000` | Port the UDP listener binds to, for incoming ICA/RSA/SDSM messages. |
-| `EGO_UDP_PORT` | `4002` | Port the live ego (this vehicle's own GPS) listener binds to - see `gps_bridge.py` below. |
+| `UDP_ICA_PORT` / `UDP_RSA_PORT` / `UDP_SDSM_PORT` | `4000` / `4001` / `4002` | Ports the RSU sends ICA / RSA / SDSM to (one listener each). |
+| `EGO_UDP_PORT` | `4003` | Port the live ego (this vehicle's own GPS) listener binds to - see `gps_bridge.py` below. |
 | `FRONTEND_ORIGIN` | `*` | Origin(s) allowed to open a Socket.IO connection. `*` is fine for local dev; lock this to the real frontend's origin once deployed somewhere with untrusted network access. |
 
 **Frontend** (copy `frontend/.env.example` to `frontend/.env` and edit):
@@ -40,7 +40,7 @@ currently sees), not an alert, shown as a live map overlay instead (see
 | `VITE_BACKEND_URL` | `http://127.0.0.1:5000` | Where the browser looks for the backend's Socket.IO server. Must match wherever `BACKEND_HOST`/`BACKEND_PORT` above actually end up reachable from. |
 | `VITE_DEFAULT_LAT` / `VITE_DEFAULT_LON` | `42.2975` / `-83.7042` | Map center shown before the first alert arrives. Set to your actual intersection. |
 
-`mock_sender.py` reads `UDP_PORT` from the same `backend/config.py` as the
+`mock_sender.py` reads the UDP ports from the same `backend/config.py` as the
 real backend, so they can't drift apart.
 
 ## Setup (end to end, from a fresh clone)
@@ -76,7 +76,7 @@ a real end-to-end test.
 
 ## Running it (3 terminals)
 
-**Terminal 1 — backend**
+**Terminal 1 — backend** (or `./run_all.sh`, which starts everything from `deploy.env` - see below)
 ```bash
 cd backend
 export PYV2XLIB_VENDOR_DIR=/path/to/folder/containing/v2xlib.py
@@ -91,10 +91,10 @@ SDSM feed (continuously-moving detected objects), and a simulated ego GPS
 path, all at once, so you can test without any hardware)
 ```bash
 export PYV2XLIB_VENDOR_DIR=/path/to/folder/containing/v2xlib.py
-python mock_sender.py
+python test_cases/mock_sender.py
 ```
 For GPS-specific scenarios (a stationary vehicle, a dropped signal, etc.),
-see `mock_sender_gps_tests.py` instead - `python mock_sender_gps_tests.py`
+see `mock_sender_gps_tests.py` instead - `python test_cases/mock_sender_gps_tests.py`
 with no arguments lists them. For extra named SDSM scenarios beyond the
 default moving one (a richly-described vehicle, an obstacle, staleness
 checks), see `mock_sender_sdsm_tests.py` the same way.
@@ -122,9 +122,9 @@ can actually reach the vehicle's ROS2 network - almost certainly the
 vehicle's own onboard computer, not necessarily the same machine the
 backend runs on:
 ```bash
-BACKEND_HOST=192.168.1.50 EGO_UDP_PORT=4002 python3 gps_bridge.py
+BACKEND_HOST=192.168.1.50 EGO_UDP_PORT=4003 python3 gps_bridge.py
 ```
-(`BACKEND_HOST` defaults to `127.0.0.1`, `EGO_UDP_PORT` to `4002` - only
+(`BACKEND_HOST` defaults to `127.0.0.1`, `EGO_UDP_PORT` to `4003` - only
 override what's actually different from the backend's own `config.py` values.)
 
 Because `mock_sender.py`/`mock_sender_gps_tests.py` send the exact same
@@ -218,3 +218,11 @@ explicit `warning: false`.
 - Whether every RSA/ICA message should count as a "warning," or only ones
   above some priority/severity, hasn't been decided — right now arrival
   always means `warning: true`.
+
+## One-command run (`run_all.sh`)
+
+```bash
+cp deploy.env.example deploy.env   # once; deploy.env is git-ignored
+# edit deploy.env: ports, BACKEND_HOST, VITE_BACKEND_URL, RUN_GPS_BRIDGE=1 on the vehicle...
+./run_all.sh                       # backend + frontend (+ gps_bridge); Ctrl+C stops all
+```

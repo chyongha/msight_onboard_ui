@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent / 'backend'))
 import config
 from codec.ICAEncoder import ica_encoder
 from codec.RSAEncoder import rsa_encoder
-from mock_sender import sock, TARGET, INTERSECTION_LAT, INTERSECTION_LON, send_hex  
+from mock_sender import sock, ICA_TARGET, RSA_TARGET, INTERSECTION_LAT, INTERSECTION_LON, send_hex  
 
 
 def send_stopline_violation():
@@ -41,7 +41,7 @@ def send_stopline_violation():
 
         eventFlag_value=2,  # bit1 
     )
-    send_hex(hex_ica, 'ICA (stop-line violation)')
+    send_hex(hex_ica, 'ICA (stop-line violation)', ICA_TARGET)
 
 
 def send_hard_braking():
@@ -68,7 +68,7 @@ def send_hard_braking():
 
         eventFlag_value=128,  # bit7 
     )
-    send_hex(hex_ica, 'ICA (hard braking)')
+    send_hex(hex_ica, 'ICA (hard braking)', ICA_TARGET)
 
 
 def send_pedestrian_accident_rsa():
@@ -97,7 +97,7 @@ def send_pedestrian_accident_rsa():
         position_speed_transmission='park',
         position_speed_velocity=0.0, 
     )
-    send_hex(hex_rsa, 'RSA (pedestrian accident)')
+    send_hex(hex_rsa, 'RSA (pedestrian accident)', RSA_TARGET)
 
 
 def send_runaway_vehicle_rsa():
@@ -128,7 +128,7 @@ def send_runaway_vehicle_rsa():
         position_speed_transmission='forwardGears',
         position_speed_velocity=45.0,  # runaway vehicle - elevated speed
     )
-    send_hex(hex_rsa, 'RSA (runaway vehicle accident)')
+    send_hex(hex_rsa, 'RSA (runaway vehicle accident)', RSA_TARGET)
 
 
 _CASES = {

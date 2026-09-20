@@ -2,22 +2,16 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 
-// how long an alert stays on screen after its most recent broadcast
+// how long an alert stays on screen a
 export const CLEAR_AFTER_MS = 7000
 // cap on simultaneously stacked alerts
 const MAX_ALERTS = 4
-// UDP has no "disconnected" signal - the only way to notice the GPS feed
-// went quiet is the absence of a new fix for a while. 2s is fast enough to
-// notice a real dropout quickly, while staying safely above the expected
-// fix interval (the mock sends every 0.5s; real RTK/INS hardware typically
-// updates at 1-10Hz) so one slightly-delayed packet doesn't flicker it
+// wait 5 secs to receive further alert
 export const EGO_STALE_AFTER_MS = 5000
-// same idea as EGO_STALE_AFTER_MS above - a bit more lenient since SDSM's
-// real broadcast cadence isn't known yet, to avoid flicker on a slightly
-// delayed frame
+// wait 5 secs to receive further sdsm messages
 export const SDSM_STALE_AFTER_MS = 5000
 
-// Falls back to local dev if no .env file available
+// backend url 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || 'http://127.0.0.1:5000'
 
 // identity to tell rsu is re-broadcasting the same ongoing hazard instead of new alert
