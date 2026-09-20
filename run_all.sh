@@ -19,7 +19,7 @@ trap cleanup INT TERM
 if [ "${RUN_GPS_BRIDGE:-0}" = "1" ]; then
   # subshell: sourcing ROS2 here must not leak into the backend's Python env
   ( [ -n "${ROS_SETUP:-}" ] && . "$ROS_SETUP"
-    cd "$ROOT/backend" && BACKEND_HOST="${GPS_TARGET_HOST:-127.0.0.1}" exec python3 -u gps_bridge.py ) & PIDS+=($!)
+    cd "$ROOT/backend" && exec python3 -u gps_bridge.py ) & PIDS+=($!)
 fi
 
 wait

@@ -28,8 +28,8 @@ def _listen_loop(socketio, host, port, decode_fn, name):
             print(f'  [udp] Failed to decode {name} packet from {addr} on port {port}: {e!r}')
             continue
 
-        # ICA/RSA are rare, discrete events -> log each one. SDSM/ego arrive
-        # every second -> SDSM gets one summary line per 10s, ego none.
+        # ICA/RSA -> log each one 
+        # SDSM -> one line summary per 10 sec
         if event == 'warning':
             print(f'  [udp] {message.get("type")} from {addr[0]}: {message.get("text")}')
         elif event == 'sdsm' and time.time() - last_sdsm_log > 10:

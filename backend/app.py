@@ -17,7 +17,7 @@ if __name__ == '__main__':
     start_ica_listener(socketio, port=config.UDP_ICA_PORT) # background thread 1 - ica
     start_rsa_listener(socketio, port=config.UDP_RSA_PORT) # background thread 2 - rsa
     start_sdsm_listener(socketio, port=config.UDP_SDSM_PORT) # background thread 3 - sdsm
-    start_ego_listener(socketio, port=config.EGO_UDP_PORT) # background thread 2 - vehicle gps location 
+    start_ego_listener(socketio, port=config.EGO_UDP_PORT) # background thread 4 - vehicle gps location 
 
     print(f'Backend running at http://{config.HOST}:{config.PORT}')
     socketio.run(app, host=config.HOST, port=config.PORT, allow_unsafe_werkzeug=True) # main thread running forever

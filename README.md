@@ -122,9 +122,9 @@ can actually reach the vehicle's ROS2 network - almost certainly the
 vehicle's own onboard computer, not necessarily the same machine the
 backend runs on:
 ```bash
-BACKEND_HOST=192.168.1.50 EGO_UDP_PORT=4003 python3 gps_bridge.py
+GPS_TARGET_HOST=192.168.1.50 EGO_UDP_PORT=4003 python3 backend/gps_bridge.py
 ```
-(`BACKEND_HOST` defaults to `127.0.0.1`, `EGO_UDP_PORT` to `4003` - only
+(`GPS_TARGET_HOST` defaults to `127.0.0.1`, `EGO_UDP_PORT` to `4003` - only
 override what's actually different from the backend's own `config.py` values.)
 
 Because `mock_sender.py`/`mock_sender_gps_tests.py` send the exact same

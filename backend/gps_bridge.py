@@ -9,7 +9,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix
 
-BACKEND_HOST = os.environ.get('BACKEND_HOST', '127.0.0.1')
+GPS_TARGET_HOST = os.environ.get('GPS_TARGET_HOST', '127.0.0.1')  # where the backend runs (NOT the backend's own bind address)
 EGO_UDP_PORT = int(os.environ.get('EGO_UDP_PORT', '4003'))
 
 
@@ -17,7 +17,7 @@ class GpsBridge:
     def __init__(self, parent_node: Node):
         self.node = parent_node
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        self.target = (BACKEND_HOST, EGO_UDP_PORT)
+        self.target = (GPS_TARGET_HOST, EGO_UDP_PORT)
 
         self.node.create_subscription(
             NavSatFix,
@@ -25,7 +25,7 @@ class GpsBridge:
             self._on_fix,
             10
         )
-        self.node.get_logger().info(f'Forwarding GPS fixes to {BACKEND_HOST}:{EGO_UDP_PORT}')
+        self.node.get_logger().info(f'Forwarding GPS fixes to {GPS_TARGET_HOST}:{EGO_UDP_PORT}')
 
     def _on_fix(self, msg):
         timestamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
