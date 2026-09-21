@@ -98,6 +98,8 @@ see `mock_sender_gps_tests.py` instead - `python test_cases/mock_sender_gps_test
 with no arguments lists them. For extra named SDSM scenarios beyond the
 default moving one (a richly-described vehicle, an obstacle, staleness
 checks), see `mock_sender_sdsm_tests.py` the same way.
+For realistic binary traffic like a real RSU (steady SDSM + GPS, ICA/RSA at random
+intervals), see `test_cases/mock_sender_binary_scenarios.py` (run it with no arguments for the list).
 
 **Terminal 3 — frontend**
 ```bash

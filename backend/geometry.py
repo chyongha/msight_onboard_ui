@@ -13,6 +13,13 @@ def meters_per_deg_lon(lat_deg: float) -> float:
     return _METERS_PER_DEG_LAT * math.cos(math.radians(lat_deg))
 
 
+def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Straight-line meters between two lat/lon points (same flat-earth approximation as above)."""
+    north = (lat2 - lat1) * _METERS_PER_DEG_LAT
+    east = (lon2 - lon1) * meters_per_deg_lon((lat1 + lat2) / 2)
+    return math.hypot(east, north)
+
+
 def offset_latlon(lat: float, lon: float, east_m: float, north_m: float):
     """(lat, lon) shifted by (east_m, north_m) meters."""
     dlat = north_m / _METERS_PER_DEG_LAT

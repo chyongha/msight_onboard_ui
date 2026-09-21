@@ -76,8 +76,7 @@ def _itis_label(code) -> str:
 
 def _active_ica_labels(event_flag_value) -> list:
     """
-    read eventFlag, return the label for each bit that's set (lowercase,
-    e.g. 'hard braking'), oldest-defined-bit first
+    read eventFlag, return the label for each bit that's set
     """
     if not isinstance(event_flag_value, int):
         return []
@@ -126,9 +125,7 @@ def _clean_coord(value):
 
 def _event_epoch(message_type: str, raw: dict, relay_time: float) -> float:
     """
-    "When the event actually happened," not "when we noticed it." Prefers
-    the message's own `timeStamp` over `relay_time`. Falls back to relay_time when
-    timeStamp wasn't set 
+    when the event happened 
     """
     if message_type == "sdsm":
         ts = raw.get('sDSMTimeStamp') or {}
@@ -150,9 +147,7 @@ def _event_epoch(message_type: str, raw: dict, relay_time: float) -> float:
 
 def _ica_subject(part_one: dict) -> dict | None:
     """
-    Who/what triggered the alert: the offending vehicle's speed, heading,
-    gear/steering/acceleration/size, and any active brake/traction/
-    stability/motion flags worth surfacing
+    who/what triggered the alert
     """
     if not part_one:
         return None
@@ -176,9 +171,6 @@ def _ica_subject(part_one: dict) -> dict | None:
     if isinstance(wheel_brakes, int) and wheel_brakes not in (0, 1):  # bit0 = unavailable
         flags.append('Wheel brakes engaged')
 
-    # motion cues from data that was previously fully unused - yaw rate
-    # (rotation) and lateral acceleration (sideways slide) - both can fire
-    # together, they're different physical facts, not alternatives
     yaw = accel.get('yaw')
     lat_accel = accel.get('lat')
     if isinstance(yaw, (int, float)) and abs(yaw) > 20:  # deg/s
@@ -223,7 +215,7 @@ def _ica_trajectory(part_one: dict, path: dict) -> list | None:
         lat_offset = crumb.get('latOffset')
         lon_offset = crumb.get('lonOffset')
         if not isinstance(lat_offset, (int, float)) or not isinstance(lon_offset, (int, float)):
-            continue  # 'unavailable' or missing
+            continue  # unavailable or missing 
         t_offset = crumb.get('timeOffset')
         points.append({
             'lat': round(anchor_lat + lat_offset, 7),
@@ -262,8 +254,9 @@ def format_ica(ica: dict) -> dict:
         'timestamp': relay_time,
         'occurred_at': _event_epoch("ica", ica, relay_time),
         'subject': _ica_subject(part_one),
-        'extent': None,  # RSA-only concept - see module docstring
-        'direction_slices': None,  # RSA-only concept - see module docstring
+        'extent': None,  # only from RSA
+        'extent_m': None,
+        'direction_slices': None,  # only from RSA
         'trajectory': _ica_trajectory(part_one, ica.get('path')),
     }
 
@@ -304,9 +297,7 @@ def _rsa_severity(priority, names: list) -> str:
 
 def _rsa_subject(position: dict, category: str) -> dict | None:
     """
-    Whatever heading/speed came with the position report - ex. a probe
-    vehicle's own reading at the moment it passed/reported the hazard.
-
+    Whatever heading/speed came with the position report
     """
     heading = _clean_coord(position.get('heading'))
     speed = _clean_coord((position.get('speed') or {}).get('speed'))
@@ -330,8 +321,7 @@ _RSA_EXTENT_LABELS = {
 
 def _rsa_extent_label(extent) -> str | None:
     """
-    Edit RSA's `extent` enum into how far past the hazard this stays
-    relevant banner text.
+    Edit `extent` enum into how far past the hazard this stays relevant banner text.
     """
     if not isinstance(extent, str):
         return None
@@ -344,6 +334,19 @@ def _rsa_extent_label(extent) -> str | None:
     meters = int(match.group(1))
     distance = f'{meters / 1000:g}km' if meters >= 1000 else f'{meters}m'
     return f'Applies for {distance}'
+
+
+def _rsa_extent_meters(extent) -> int | None:
+    """
+    RSA's `extent` enum as a plain distance in meters, for deciding whether
+    this vehicle is close enough for the alert to matter
+    None = no usable limit: not sent, 'forever', or 'useInstantlyOnly' (no
+    radius to compare against), so the alert is always shown.
+    """
+    if not isinstance(extent, str):
+        return None
+    match = re.fullmatch(r'useFor(\d+)meters', extent)
+    return int(match.group(1)) if match else None
 
 
 def _rsa_heading_slices(heading) -> list | None:
@@ -394,6 +397,7 @@ def format_rsa(rsa: dict) -> dict:
         'occurred_at': _event_epoch("rsa", rsa, relay_time),
         'subject': _rsa_subject(position, category),
         'extent': _rsa_extent_label(rsa.get('extent')),
+        'extent_m': _rsa_extent_meters(rsa.get('extent')),
         'direction_slices': _rsa_heading_slices(rsa.get('heading')),
         'trajectory': None,   # no path history for rsa
     }

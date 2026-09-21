@@ -10,6 +10,8 @@ import socket
 import threading
 import time
 
+import config
+import relevance
 from decoder import decode_message
 
 
@@ -22,11 +24,21 @@ def _listen_loop(socketio, host, port, decode_fn, name):
     last_sdsm_log = 0.0
     while True:
         raw_bytes, addr = sock.recvfrom(4096)  # raw_bytes - actual bytes that were sent / addr - (sender_ip, sender_port)
+        if config.DEBUG_HEX:
+            print(f'  [udp] {name} {len(raw_bytes)} bytes from {addr[0]}: {raw_bytes[:24].hex()}...')
         try:
             event, message = decode_fn(raw_bytes) 
         except Exception as e:
             print(f'  [udp] Failed to decode {name} packet from {addr} on port {port}: {e!r}')
             continue
+
+        if event == 'ego':
+            relevance.update_ego(message)
+        elif event == 'warning':
+            show, reason = relevance.is_relevant(message)
+            if not show:
+                print(f'  [udp] {message.get("type")} hidden: {reason}')
+                continue
 
         # ICA/RSA -> log each one 
         # SDSM -> one line summary per 10 sec

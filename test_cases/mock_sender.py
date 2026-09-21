@@ -30,8 +30,7 @@ SDSM_TARGET = (MOCK_HOST, config.UDP_SDSM_PORT)
 TARGET = ICA_TARGET  # legacy name, still imported by mock_sender_test_cases.py
 EGO_TARGET = (MOCK_HOST, config.EGO_UDP_PORT)
 
-# matches MapView.vue's DEFAULT_CENTER
-# so mock data actually lands where the map opens by default 
+# matches MapView.vue DEFAULT_CENTER
 INTERSECTION_LAT = 42.2975
 INTERSECTION_LON = -83.7042
 
