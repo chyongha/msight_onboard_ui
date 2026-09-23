@@ -1,21 +1,17 @@
 """
-Decides whether an alert applies to THIS vehicle, based on where it is.
+Decides whether an alert applies to this vehicle
 
-Only RSA for now: its `extent` (converted to meters as `extent_m` by
-alert_formatter.py) is how far from the hazard the alert applies, so it's
-relevant only while this vehicle is within that distance. ICA has no extent,
-so it's always relevant.
+extent is (`extent_m` by alert_formatter.py) is how far from the hazard the alert applies, so it's
+relevant only while this vehicle is within that distance
 
-Fails open: anything that stops us from being sure (filter off, no extent, no
-hazard position, no GPS fix or a stale one) means "show it" - for a safety
-warning, showing one that didn't matter is better than hiding one that did.
+If not sure, just show it
 """
 import time
 
 import config
 from geometry import distance_m
 
-_ego = None  # (lat, lon, received_at) - one tuple assignment, so safe across the listener threads
+_ego = None  # (lat, lon, received_at) 
 
 
 def update_ego(fix: dict):
